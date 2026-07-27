@@ -1,0 +1,1412 @@
+[
+    {
+        "Account number":"1000",
+        "Account name":"BOA - 7458 (Pace Plus)",
+        "Account type":"Bank",
+        "Detail type":"Checking"
+    },
+    {
+        "Account number":"1005",
+        "Account name":"BOA - 9016 (ZooOffice)",
+        "Account type":"Bank",
+        "Detail type":"Checking"
+    },
+    {
+        "Account number":"1010",
+        "Account name":"BOA - 5974 (PsPortals)",
+        "Account type":"Bank",
+        "Detail type":"Checking"
+    },
+    {
+        "Account number":"1015",
+        "Account name":"BOA - 0835 (Workaware)",
+        "Account type":"Bank",
+        "Detail type":"Checking"
+    },
+    {
+        "Account number":"1020",
+        "Account name":"BOA - 4794 (SystemView)",
+        "Account type":"Bank",
+        "Detail type":"Checking"
+    },
+    {
+        "Account number":"1025",
+        "Account name":"BOA - 9058 (ZigVoice)",
+        "Account type":"Bank",
+        "Detail type":"Checking"
+    },
+    {
+        "Account number":"1030",
+        "Account name":"BOA - 5169 (ZenaDrone)",
+        "Account type":"Bank",
+        "Detail type":"Checking"
+    },
+    {
+        "Account number":"1035",
+        "Account name":"BOA - 7692 (ZenaTech)",
+        "Account type":"Bank",
+        "Detail type":"Checking"
+    },
+    {
+        "Account number":"1040",
+        "Account name":"BOA - 4726 (Ecker)",
+        "Account type":"Bank",
+        "Detail type":"Checking"
+    },
+    {
+        "Account number":"1041",
+        "Account name":"BOA - 8454 (Interactive)",
+        "Account type":"Bank",
+        "Detail type":"Checking"
+    },
+    {
+        "Account number":"1042",
+        "Account name":"BOA - 9572 (InterlinkOne)",
+        "Account type":"Bank",
+        "Detail type":"Checking"
+    },
+    {
+        "Account number":"1045",
+        "Account name":"TD Bank - 1964 (PsPortals)",
+        "Account type":"Bank",
+        "Detail type":"Checking"
+    },
+    {
+        "Account number":"1050",
+        "Account name":"US Bank-1194 (PsPortals)",
+        "Account type":"Bank",
+        "Detail type":"Checking"
+    },
+    {
+        "Account number":"1051",
+        "Account name":"US Bank-9690 (Interactive)",
+        "Account type":"Bank",
+        "Detail type":"Checking"
+    },
+    {
+        "Account number":"1052",
+        "Account name":"US Bank-8912 (ZenaTech)",
+        "Account type":"Bank",
+        "Detail type":"Checking"
+    },
+    {
+        "Account number":"1090",
+        "Account name":"First Merchants Bank - 5774",
+        "Account type":"Bank",
+        "Detail type":"Checking"
+    },
+    {
+        "Account number":"1098",
+        "Account name":"Naperville B&T - 8267",
+        "Account type":"Bank",
+        "Detail type":"Checking"
+    },
+    {
+        "Account number":"1099",
+        "Account name":"Bank Clearing Account",
+        "Account type":"Bank",
+        "Detail type":"Checking"
+    },
+    {
+        "Account number":"1100",
+        "Account name":"Accounts Receivable",
+        "Account type":"Accounts receivable (A\/R)",
+        "Detail type":"Accounts Receivable (A\/R)"
+    },
+    {
+        "Account number":"1105",
+        "Account name":"Allowance for Doubtful Accounts",
+        "Account type":"Other Current Assets",
+        "Detail type":"Other Current Assets"
+    },
+    {
+        "Account number":"1120",
+        "Account name":"Undeposited Funds",
+        "Account type":"Other Current Assets",
+        "Detail type":"Undeposited Funds"
+    },
+    {
+        "Account number":"1125",
+        "Account name":"Funds on Deposit",
+        "Account type":"Other Current Assets",
+        "Detail type":"Other Current Assets"
+    },
+    {
+        "Account number":"1150",
+        "Account name":"Supplies Inventory",
+        "Account type":"Other Current Assets",
+        "Detail type":"Other Current Assets"
+    },
+    {
+        "Account number":"1160",
+        "Account name":"Product Inventory",
+        "Account type":"Other Current Assets",
+        "Detail type":"Other Current Assets"
+    },
+    {
+        "Account number":"1300",
+        "Account name":"Employee Advances",
+        "Account type":"Other Current Assets",
+        "Detail type":"Other Current Assets"
+    },
+    {
+        "Account number":"1400",
+        "Account name":"Prepaid Expenses",
+        "Account type":"Other Current Assets",
+        "Detail type":"Other Current Assets"
+    },
+    {
+        "Account number":"1445",
+        "Account name":"Short-term Investment",
+        "Account type":"Other Current Assets",
+        "Detail type":"Other Current Assets"
+    },
+    {
+        "Account number":"1499",
+        "Account name":"Other Current Assets",
+        "Account type":"Other Current Assets",
+        "Detail type":"Other Current Assets"
+    },
+    {
+        "Account number":null,
+        "Account name":"Inventory Asset",
+        "Account type":"Other Current Assets",
+        "Detail type":"Inventory"
+    },
+    {
+        "Account number":null,
+        "Account name":"Uncategorized Asset",
+        "Account type":"Other Current Assets",
+        "Detail type":"Other Current Assets"
+    },
+    {
+        "Account number":"1500",
+        "Account name":"Computers and Related Equipment",
+        "Account type":"Fixed Assets",
+        "Detail type":"Other fixed assets"
+    },
+    {
+        "Account number":"1510",
+        "Account name":"Furniture and Fixtures",
+        "Account type":"Fixed Assets",
+        "Detail type":"Other fixed assets"
+    },
+    {
+        "Account number":"1520",
+        "Account name":"Vehicles",
+        "Account type":"Fixed Assets",
+        "Detail type":"Other fixed assets"
+    },
+    {
+        "Account number":"1530",
+        "Account name":"Leasehold Improvements",
+        "Account type":"Fixed Assets",
+        "Detail type":"Other fixed assets"
+    },
+    {
+        "Account number":"1550",
+        "Account name":"Business Equipment",
+        "Account type":"Fixed Assets",
+        "Detail type":"Other fixed assets"
+    },
+    {
+        "Account number":"1600",
+        "Account name":"Building - Address",
+        "Account type":"Fixed Assets",
+        "Detail type":"Other fixed assets"
+    },
+    {
+        "Account number":"1650",
+        "Account name":"Land - Address",
+        "Account type":"Fixed Assets",
+        "Detail type":"Other fixed assets"
+    },
+    {
+        "Account number":"1700",
+        "Account name":"Accumulated Depreciation",
+        "Account type":"Fixed Assets",
+        "Detail type":"Other fixed assets"
+    },
+    {
+        "Account number":"1800",
+        "Account name":"Right of Use Asset",
+        "Account type":"Other Assets",
+        "Detail type":"Other Long-term Assets"
+    },
+    {
+        "Account number":"1850",
+        "Account name":"Deferred Costs",
+        "Account type":"Other Assets",
+        "Detail type":"Other Long-term Assets"
+    },
+    {
+        "Account number":"1900",
+        "Account name":"Investment in Tillerstack",
+        "Account type":"Other Assets",
+        "Detail type":"Other Long-term Assets"
+    },
+    {
+        "Account number":"1902",
+        "Account name":"Investment in Taiwan",
+        "Account type":"Other Assets",
+        "Detail type":"Other Long-term Assets"
+    },
+    {
+        "Account number":"1903",
+        "Account name":"Investment in Sharjah UAE",
+        "Account type":"Other Assets",
+        "Detail type":"Other Long-term Assets"
+    },
+    {
+        "Account number":"1904",
+        "Account name":"Investment in Turkeey",
+        "Account type":"Other Assets",
+        "Detail type":"Other Long-term Assets"
+    },
+    {
+        "Account number":"1905",
+        "Account name":"Investment in Pakistan",
+        "Account type":"Other Assets",
+        "Detail type":"Other Long-term Assets"
+    },
+    {
+        "Account number":"1906",
+        "Account name":"Investment in India",
+        "Account type":"Other Assets",
+        "Detail type":"Other Long-term Assets"
+    },
+    {
+        "Account number":"1940",
+        "Account name":"Product Development Costs",
+        "Account type":"Other Assets",
+        "Detail type":"Other Long-term Assets"
+    },
+    {
+        "Account number":"1949",
+        "Account name":"Product Developmt - Accum Amort",
+        "Account type":"Other Assets",
+        "Detail type":"Other Long-term Assets"
+    },
+    {
+        "Account number":"1960",
+        "Account name":"Note Receivable from John Gray",
+        "Account type":"Other Assets",
+        "Detail type":"Other Long-term Assets"
+    },
+    {
+        "Account number":"1970",
+        "Account name":"Goodwill",
+        "Account type":"Other Assets",
+        "Detail type":"Other Long-term Assets"
+    },
+    {
+        "Account number":"1999",
+        "Account name":"Other LT Assets",
+        "Account type":"Other Assets",
+        "Detail type":"Other Long-term Assets"
+    },
+    {
+        "Account number":"2000",
+        "Account name":"Accounts Payable",
+        "Account type":"Accounts payable (A\/P)",
+        "Detail type":"Accounts Payable (A\/P)"
+    },
+    {
+        "Account number":"2010",
+        "Account name":"Amex - 77002 (InterlinkOne)",
+        "Account type":"Credit Card",
+        "Detail type":"Credit Card"
+    },
+    {
+        "Account number":"2011",
+        "Account name":"US Bank - 0292 (Interactive)",
+        "Account type":"Credit Card",
+        "Detail type":"Credit Card"
+    },
+    {
+        "Account number":"2012",
+        "Account name":"Capital One - 4511 (PsPortals)",
+        "Account type":"Credit Card",
+        "Detail type":"Credit Card"
+    },
+    {
+        "Account number":"2013",
+        "Account name":"BOA Credit 0453(ZenaTech)",
+        "Account type":"Credit Card",
+        "Detail type":"Credit Card"
+    },
+    {
+        "Account number":"2001",
+        "Account name":"Earnout Liability",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2100",
+        "Account name":"Payroll Liabilities",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Payroll Tax Payable"
+    },
+    {
+        "Account number":"2110",
+        "Account name":"Direct Deposit Liabilities",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2130",
+        "Account name":"Sales Tax Payable",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Sales Tax Payable"
+    },
+    {
+        "Account number":"2140",
+        "Account name":"Income Tax Payable",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2150",
+        "Account name":"Accrued Interest Expense",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2160",
+        "Account name":"Other Accrued Expenses",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2190",
+        "Account name":"Deferred Revenue",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2195",
+        "Account name":"Short-term Debt",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2199",
+        "Account name":"Other Current Liabilities",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2300",
+        "Account name":"Current Portion Lease Obligatin",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2310",
+        "Account name":"TDBank -  LOC (PsPortals)",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2400",
+        "Account name":"Intercompany Accounts",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2405",
+        "Account name":"Intercompany Accounts:I\/C - Epazz",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2406",
+        "Account name":"Intercompany Accounts:I\/C - Provitrac Inc",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2407",
+        "Account name":"Intercompany Accounts:I\/C - K9 Sky Inc",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2408",
+        "Account name":"Intercompany Accounts:I\/C - Ecker Capital",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2415",
+        "Account name":"Intercompany Accounts:I\/C - Drone as a Service",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2416",
+        "Account name":"Intercompany Accounts:I\/C - Weddle LS",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2417",
+        "Account name":"Intercompany Accounts:I\/C - KJM LS",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2418",
+        "Account name":"Intercompany Accounts:I\/C - Wallace LS",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2419",
+        "Account name":"Intercompany Accounts:I\/C - Miller LS",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2420",
+        "Account name":"Intercompany Accounts:I\/C - Laventure LS",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2421",
+        "Account name":"Intercompany Accounts:I\/C - Empire LS",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2422",
+        "Account name":"Intercompany Accounts:I\/C - Morgan LS",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2423",
+        "Account name":"Intercompany Accounts:I\/C - Cardinal LS",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2424",
+        "Account name":"Intercompany Accounts:I\/C - Lescure LS",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2425",
+        "Account name":"Intercompany Accounts:I\/C - A&J LS",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2426",
+        "Account name":"Intercompany Accounts:I\/C - Putt LS",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2427",
+        "Account name":"Intercompany Accounts:I\/C  - Rampart LS",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2428",
+        "Account name":"Intercompany Accounts:I\/C - Smith LS",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2429",
+        "Account name":"Intercompany Accounts:I\/C - Casado LS",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2430",
+        "Account name":"Intercompany Accounts:I\/C - Vara",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2431",
+        "Account name":"Intercompany Accounts:I\/C - Holt LS",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2432",
+        "Account name":"Intercompany Accounts:I\/C - LD King LS",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2433",
+        "Account name":"Intercompany Accounts:I\/C - Sunrise",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2434",
+        "Account name":"Intercompany Accounts:I\/C - Andrew LS",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2435",
+        "Account name":"Intercompany Accounts:I\/C - Andy Paris LS",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2460",
+        "Account name":"Intercompany Accounts:I\/C - Pace Plus Inc",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2461",
+        "Account name":"Intercompany Accounts:I\/C - OtherShip-UK",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2462",
+        "Account name":"Intercompany Accounts:I\/C Now Solutions USA",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2463",
+        "Account name":"Intercompany Accounts:I\/C - Now Solutions CAN",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2464",
+        "Account name":"Intercompany Accounts:I\/C - Spider Vision",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2465",
+        "Account name":"Intercompany Accounts:I\/C - Zena Drone Havacilik Hizmetleri Lmt",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2485",
+        "Account name":"Intercompany Accounts:I\/C - ZenaTech Inc (CAN)",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2486",
+        "Account name":"Intercompany Accounts:I\/C - TillerStack",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2488",
+        "Account name":"Intercompany Accounts:I\/C - ZenaDrone Trading Dubai",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2489",
+        "Account name":"Intercompany Accounts:I\/C - Zena Pay",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":"2499",
+        "Account name":"Intercompany Accounts:I\/C - Ameritek Ventures",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Other Current Liabilities"
+    },
+    {
+        "Account number":null,
+        "Account name":"Canadian revenue Agency Payable",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Global Tax Payable"
+    },
+    {
+        "Account number":null,
+        "Account name":"Canadian revenue Agency Payable:Sales Tax Payable",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Sales Tax Payable"
+    },
+    {
+        "Account number":null,
+        "Account name":"Illinois Department of Revenue Payable",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Global Tax Payable"
+    },
+    {
+        "Account number":null,
+        "Account name":"Illinois Department of Revenue Payable:Sales Tax Payable",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Sales Tax Payable"
+    },
+    {
+        "Account number":null,
+        "Account name":"Sales Tax Agency Payable",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Global Tax Payable"
+    },
+    {
+        "Account number":null,
+        "Account name":"Sales Tax Agency Payable:Sales Tax Payable",
+        "Account type":"Other Current Liabilities",
+        "Detail type":"Sales Tax Payable"
+    },
+    {
+        "Account number":"2500",
+        "Account name":"Long-term Lease Obligation",
+        "Account type":"Long Term Liabilities",
+        "Detail type":"Other Long Term Liabilities"
+    },
+    {
+        "Account number":"2505",
+        "Account name":"SBA Loan - Interactive Systems",
+        "Account type":"Long Term Liabilities",
+        "Detail type":"Other Long Term Liabilities"
+    },
+    {
+        "Account number":"2506",
+        "Account name":"SBA Loan - ZooOffice",
+        "Account type":"Long Term Liabilities",
+        "Detail type":"Other Long Term Liabilities"
+    },
+    {
+        "Account number":"2507",
+        "Account name":"SBFS LLC Loan dba RapidAdvance",
+        "Account type":"Long Term Liabilities",
+        "Detail type":"Other Long Term Liabilities"
+    },
+    {
+        "Account number":"2512",
+        "Account name":"Loan - GG Mars (LOC)",
+        "Account type":"Long Term Liabilities",
+        "Detail type":"Other Long Term Liabilities"
+    },
+    {
+        "Account number":"2514",
+        "Account name":"Loan - Star Fincl (LOC)",
+        "Account type":"Long Term Liabilities",
+        "Detail type":"Other Long Term Liabilities"
+    },
+    {
+        "Account number":"2520",
+        "Account name":"Loan - Jennings Investmts (LOC)",
+        "Account type":"Long Term Liabilities",
+        "Detail type":"Other Long Term Liabilities"
+    },
+    {
+        "Account number":"2522",
+        "Account name":"Loan - LoneStella Inc (LOC)",
+        "Account type":"Long Term Liabilities",
+        "Detail type":"Other Long Term Liabilities"
+    },
+    {
+        "Account number":"2524",
+        "Account name":"Loan - Mercy and Grace Inc.",
+        "Account type":"Long Term Liabilities",
+        "Detail type":"Other Long Term Liabilities"
+    },
+    {
+        "Account number":"2531",
+        "Account name":"Weddle Surveying Acqusition Nt",
+        "Account type":"Long Term Liabilities",
+        "Detail type":"Other Long Term Liabilities"
+    },
+    {
+        "Account number":"2532",
+        "Account name":"KJM Surveying Acqusition Note",
+        "Account type":"Long Term Liabilities",
+        "Detail type":"Other Long Term Liabilities"
+    },
+    {
+        "Account number":"2533",
+        "Account name":"Othership UK Acqusition Note",
+        "Account type":"Long Term Liabilities",
+        "Detail type":"Other Long Term Liabilities"
+    },
+    {
+        "Account number":"2534",
+        "Account name":"Wallace Surveying Acquisition N",
+        "Account type":"Long Term Liabilities",
+        "Detail type":"Other Long Term Liabilities"
+    },
+    {
+        "Account number":"2535",
+        "Account name":"Miller Surveying Acquisition Nt",
+        "Account type":"Long Term Liabilities",
+        "Detail type":"Other Long Term Liabilities"
+    },
+    {
+        "Account number":"2536",
+        "Account name":"Laventure Surveying Acquisition",
+        "Account type":"Long Term Liabilities",
+        "Detail type":"Other Long Term Liabilities"
+    },
+    {
+        "Account number":"2537",
+        "Account name":"Empire Surveying Acqusition Nt",
+        "Account type":"Long Term Liabilities",
+        "Detail type":"Other Long Term Liabilities"
+    },
+    {
+        "Account number":"2538",
+        "Account name":"Morgan Surveying Note",
+        "Account type":"Long Term Liabilities",
+        "Detail type":"Other Long Term Liabilities"
+    },
+    {
+        "Account number":"2539",
+        "Account name":"Cardinal Civil Resources Nt",
+        "Account type":"Long Term Liabilities",
+        "Detail type":"Other Long Term Liabilities"
+    },
+    {
+        "Account number":"2540",
+        "Account name":"Lescure Engineers Note",
+        "Account type":"Long Term Liabilities",
+        "Detail type":"Other Long Term Liabilities"
+    },
+    {
+        "Account number":"2541",
+        "Account name":"A&J Land Surveyors Note",
+        "Account type":"Long Term Liabilities",
+        "Detail type":"Other Long Term Liabilities"
+    },
+    {
+        "Account number":"2542",
+        "Account name":"Putt Land Surveying Note",
+        "Account type":"Long Term Liabilities",
+        "Detail type":"Other Long Term Liabilities"
+    },
+    {
+        "Account number":"2543",
+        "Account name":"Rampart Land Survey Note",
+        "Account type":"Long Term Liabilities",
+        "Detail type":"Other Long Term Liabilities"
+    },
+    {
+        "Account number":"2544",
+        "Account name":"Smith Suvey Loan",
+        "Account type":"Long Term Liabilities",
+        "Detail type":"Other Long Term Liabilities"
+    },
+    {
+        "Account number":"2545",
+        "Account name":"Casado Design Note",
+        "Account type":"Long Term Liabilities",
+        "Detail type":"Notes Payable"
+    },
+    {
+        "Account number":"2546",
+        "Account name":"Vara 3D, Inc Note",
+        "Account type":"Long Term Liabilities",
+        "Detail type":"Notes Payable"
+    },
+    {
+        "Account number":"2547",
+        "Account name":"Holt Surveying Note",
+        "Account type":"Long Term Liabilities",
+        "Detail type":"Notes Payable"
+    },
+    {
+        "Account number":"2548",
+        "Account name":"LD King Note",
+        "Account type":"Long Term Liabilities",
+        "Detail type":"Notes Payable"
+    },
+    {
+        "Account number":"2549",
+        "Account name":"Sunrise Window Note",
+        "Account type":"Long Term Liabilities",
+        "Detail type":"Notes Payable"
+    },
+    {
+        "Account number":"2550",
+        "Account name":"Andrew Spiewak Note",
+        "Account type":"Long Term Liabilities",
+        "Detail type":"Notes Payable"
+    },
+    {
+        "Account number":"2551",
+        "Account name":"Andy Paris LS Note",
+        "Account type":"Long Term Liabilities",
+        "Detail type":"Notes Payable"
+    },
+    {
+        "Account number":"2560",
+        "Account name":"Debenture-100K-GG Mars",
+        "Account type":"Long Term Liabilities",
+        "Detail type":"Other Long Term Liabilities"
+    },
+    {
+        "Account number":"2999",
+        "Account name":"Other LT Liabilities",
+        "Account type":"Long Term Liabilities",
+        "Detail type":"Other Long Term Liabilities"
+    },
+    {
+        "Account number":"3500",
+        "Account name":"Common Stock",
+        "Account type":"Equity",
+        "Detail type":"Opening Balance Equity"
+    },
+    {
+        "Account number":"3999",
+        "Account name":"Retained Earnings",
+        "Account type":"Equity",
+        "Detail type":"Retained Earnings"
+    },
+    {
+        "Account number":"4100",
+        "Account name":"Hardware Sales",
+        "Account type":"Income",
+        "Detail type":"Sales of Product Income"
+    },
+    {
+        "Account number":"4200",
+        "Account name":"Hosting Services",
+        "Account type":"Income",
+        "Detail type":"Sales of Product Income"
+    },
+    {
+        "Account number":"4300",
+        "Account name":"Consulting Services",
+        "Account type":"Income",
+        "Detail type":"Sales of Product Income"
+    },
+    {
+        "Account number":"4400",
+        "Account name":"License and Fee Income",
+        "Account type":"Income",
+        "Detail type":"Sales of Product Income"
+    },
+    {
+        "Account number":"4500",
+        "Account name":"Subscription Services",
+        "Account type":"Income",
+        "Detail type":"Sales of Product Income"
+    },
+    {
+        "Account number":"4600",
+        "Account name":"Support and Maintenance",
+        "Account type":"Income",
+        "Detail type":"Sales of Product Income"
+    },
+    {
+        "Account number":"4900",
+        "Account name":"Miscellaneous Income",
+        "Account type":"Income",
+        "Detail type":"Sales of Product Income"
+    },
+    {
+        "Account number":"4900A",
+        "Account name":"DO NOT USE",
+        "Account type":"Income",
+        "Detail type":"Sales of Product Income"
+    },
+    {
+        "Account number":null,
+        "Account name":"Billable Expense Income",
+        "Account type":"Income",
+        "Detail type":"Sales of Product Income"
+    },
+    {
+        "Account number":null,
+        "Account name":"Markup",
+        "Account type":"Income",
+        "Detail type":"Sales of Product Income"
+    },
+    {
+        "Account number":null,
+        "Account name":"Sales",
+        "Account type":"Income",
+        "Detail type":"Sales of Product Income"
+    },
+    {
+        "Account number":null,
+        "Account name":"Sales of Product Income",
+        "Account type":"Income",
+        "Detail type":"Sales of Product Income"
+    },
+    {
+        "Account number":null,
+        "Account name":"Shipping Income",
+        "Account type":"Income",
+        "Detail type":"Sales of Product Income"
+    },
+    {
+        "Account number":null,
+        "Account name":"Unapplied Cash Payment Income",
+        "Account type":"Income",
+        "Detail type":"Unapplied Cash Payment Income"
+    },
+    {
+        "Account number":null,
+        "Account name":"Uncategorized Income",
+        "Account type":"Income",
+        "Detail type":"Sales of Product Income"
+    },
+    {
+        "Account number":"5000",
+        "Account name":"Cost of Goods Sold",
+        "Account type":"Cost of Goods Sold",
+        "Detail type":"Supplies & Materials - COGS"
+    },
+    {
+        "Account number":"5100",
+        "Account name":"Web Hosting Fees",
+        "Account type":"Cost of Goods Sold",
+        "Detail type":"Supplies & Materials - COGS"
+    },
+    {
+        "Account number":"5200",
+        "Account name":"Other Web Services",
+        "Account type":"Cost of Goods Sold",
+        "Detail type":"Supplies & Materials - COGS"
+    },
+    {
+        "Account number":"5400",
+        "Account name":"Subcontracted Production Labor",
+        "Account type":"Cost of Goods Sold",
+        "Detail type":"Supplies & Materials - COGS"
+    },
+    {
+        "Account number":"5800",
+        "Account name":"Programming and support fees",
+        "Account type":"Cost of Goods Sold",
+        "Detail type":"Supplies & Materials - COGS"
+    },
+    {
+        "Account number":"5900",
+        "Account name":"Freight and Shipping Costs",
+        "Account type":"Cost of Goods Sold",
+        "Detail type":"Supplies & Materials - COGS"
+    },
+    {
+        "Account number":"6000",
+        "Account name":"Advertising and Promotion",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6100",
+        "Account name":"Payroll Expenses",
+        "Account type":"Expenses",
+        "Detail type":"Payroll Expenses"
+    },
+    {
+        "Account number":"6110",
+        "Account name":"Payroll Expenses:Salaries and Wages",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6120",
+        "Account name":"Payroll Expenses:Employer Taxes",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6130",
+        "Account name":"Payroll Expenses:Subcontract Admin Labor",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6140",
+        "Account name":"Payroll Expenses:Payroll Service Fees",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6150",
+        "Account name":"Payroll Expenses:Professional Development",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6160",
+        "Account name":"Payroll Expenses:Uniforms",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6170",
+        "Account name":"Payroll Expenses:Recruitment",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6200",
+        "Account name":"Employee Benefits",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6210",
+        "Account name":"Employee Benefits:Health Insurance",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6220",
+        "Account name":"Employee Benefits:Life and Disability Insurance",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6230",
+        "Account name":"Employee Benefits:Worker's Compensation Ins",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6240",
+        "Account name":"Employee Benefits:Pension and Retirement Savings",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6299",
+        "Account name":"Employee Benefits:Other Employee Benefits",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6300",
+        "Account name":"Office Expense",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6310",
+        "Account name":"Office Expense:Rent Expense",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6320",
+        "Account name":"Office Expense:Security Expense",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6330",
+        "Account name":"Office Expense:Repairs and Maintenance",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6340",
+        "Account name":"Office Expense:Office Supplies",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6350",
+        "Account name":"Office Expense:Telephone \/ Mobile Expense",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6360",
+        "Account name":"Office Expense:Computer and Internet Expenses",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6370",
+        "Account name":"Office Expense:Utilities",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6380",
+        "Account name":"Office Expense:Postage and Delivery",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6390",
+        "Account name":"Office Expense:Dues and Subscriptions",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6400",
+        "Account name":"Auto Expense",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6500",
+        "Account name":"Travel Expense",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6510",
+        "Account name":"Travel Expense:Transportation",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6520",
+        "Account name":"Travel Expense:Lodging",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6530",
+        "Account name":"Travel Expense:Meals",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6540",
+        "Account name":"Travel Expense:Entertainment",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6600",
+        "Account name":"Professional Fees",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6610",
+        "Account name":"Professional Fees:Accounting",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6620",
+        "Account name":"Professional Fees:Legal",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6630",
+        "Account name":"Professional Fees:Regulatory Fees",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6640",
+        "Account name":"Professional Fees:Commission on Marketable Securities",
+        "Account type":"Expenses",
+        "Detail type":"Other Business Expenses"
+    },
+    {
+        "Account number":"6699",
+        "Account name":"Professional Fees:Other Professional Fees",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6700",
+        "Account name":"Other Expenses",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6710",
+        "Account name":"Other Expenses:Bank Service Charges",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6720",
+        "Account name":"Other Expenses:Merchant Account Fees",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6730",
+        "Account name":"Other Expenses:Stock Ledger Services",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6740",
+        "Account name":"Other Expenses:General Liability Insurance",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6750",
+        "Account name":"Other Expenses:Business Licenses and Permits",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6760",
+        "Account name":"Other Expenses:Charitable Contributions",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6770",
+        "Account name":"Other Expenses:Uncategorized Expenses",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6780",
+        "Account name":"Other Expenses:Bad Debts Expense",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6799",
+        "Account name":"Other Expenses:Miscellaneous Expense",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6800",
+        "Account name":"Depreciation Expense",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6890",
+        "Account name":"Amortization Expense",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6900",
+        "Account name":"Tax Expense",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6910",
+        "Account name":"Tax Expense:Property Taxes",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6920",
+        "Account name":"Tax Expense:State Sales Tax",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6930",
+        "Account name":"Tax Expense:State Income Tax",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6990",
+        "Account name":"Tax Expense:Federal Income Tax",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"6999",
+        "Account name":"Tax Expense:Penalty - Nondeductable",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":null,
+        "Account name":"Purchases",
+        "Account type":"Expenses",
+        "Detail type":"Supplies & Materials"
+    },
+    {
+        "Account number":null,
+        "Account name":"Unapplied Cash Bill Payment Expense",
+        "Account type":"Expenses",
+        "Detail type":"Unapplied Cash Bill Payment Expense"
+    },
+    {
+        "Account number":null,
+        "Account name":"Uncategorized Expense",
+        "Account type":"Expenses",
+        "Detail type":"Other Miscellaneous Service Cost"
+    },
+    {
+        "Account number":"7000",
+        "Account name":"Interest Income",
+        "Account type":"Other Income",
+        "Detail type":"Other Miscellaneous Income"
+    },
+    {
+        "Account number":"7500",
+        "Account name":"Gain on Asset Disposal",
+        "Account type":"Other Income",
+        "Detail type":"Other Miscellaneous Income"
+    },
+    {
+        "Account number":"7800",
+        "Account name":"Gain on Extinguishment of Debt",
+        "Account type":"Other Income",
+        "Detail type":"Other Miscellaneous Income"
+    },
+    {
+        "Account number":"7999",
+        "Account name":"Other Non-operation Income",
+        "Account type":"Other Income",
+        "Detail type":"Other Miscellaneous Income"
+    },
+    {
+        "Account number":"8700",
+        "Account name":"Exchange Gain or Loss",
+        "Account type":"Other Income",
+        "Detail type":"Other Miscellaneous Income"
+    },
+    {
+        "Account number":"9900",
+        "Account name":"Unrealized Gain \/ (Loss)",
+        "Account type":"Other Income",
+        "Detail type":"Other Miscellaneous Income"
+    },
+    {
+        "Account number":"8000",
+        "Account name":"Interest Expense",
+        "Account type":"Other Expense",
+        "Detail type":"Other Miscellaneous Expense"
+    },
+    {
+        "Account number":"8500",
+        "Account name":"Loss on Asset Disposal",
+        "Account type":"Other Expense",
+        "Detail type":"Other Miscellaneous Expense"
+    },
+    {
+        "Account number":"8998",
+        "Account name":"Intercompany Closing",
+        "Account type":"Other Expense",
+        "Detail type":"Other Miscellaneous Expense"
+    },
+    {
+        "Account number":"8999",
+        "Account name":"Other Non-operation Expense",
+        "Account type":"Other Expense",
+        "Detail type":"Other Miscellaneous Expense"
+    },
+    {
+        "Account number":null,
+        "Account name":"Reconciliation Discrepancies",
+        "Account type":"Other Expense",
+        "Detail type":"Other Miscellaneous Expense"
+    }
+]

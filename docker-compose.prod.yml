@@ -1,0 +1,42 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    image: admin-backend-api:latest
+    container_name: admin_backend_api_prod
+
+    ports:
+      - "80:8000"
+
+    volumes:
+      - ./data:/app/data
+
+    env_file:
+      - path: .env.production
+        required: true
+
+    environment:
+      - APP_ENV=production
+
+    restart: unless-stopped
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live')"
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"

@@ -1,0 +1,156 @@
+import os
+import asyncio
+import logging
+from dotenv import load_dotenv
+import asyncpg
+from contextlib import asynccontextmanager
+
+# load .env file to populate environment variables
+load_dotenv()
+
+# Global reference to the connection pools
+_pool: asyncpg.Pool | None = None
+_admin_pool: asyncpg.Pool | None = None
+logger = logging.getLogger(__name__)
+
+async def create_pool():
+    """Creates the connection pool if it doesn't exist yet, then returns it."""
+    global _pool
+    if _pool is None:
+        logger.info("Initializing PostgreSQL connection pool", extra={"event": "database_pool_initializing"})
+        retries = 5
+        for attempt in range(retries):
+            try:
+                _pool = await asyncpg.create_pool(
+                    dsn=os.environ["DATABASE_URL"],
+                    ssl="require",
+                    min_size=1,
+                    max_size=5,
+                    command_timeout=120,
+                    max_inactive_connection_lifetime=30,
+                )
+                break
+            except Exception as e:
+                if "EMAXCONNSESSION" in str(e) and attempt < retries - 1:
+                    logger.warning(
+                        "Database connection limit reached; retrying",
+                        extra={"event": "database_pool_retry"},
+                    )
+                    await asyncio.sleep(5)
+                else:
+                    raise
+    return _pool
+
+async def create_admin_pool():
+    """Creates the Admin database connection pool."""
+    global _admin_pool
+    admin_dsn = os.environ.get("ADMIN_DATABASE_URL") or os.environ.get("ADMIN_PORTAL_DATABASE") or os.environ.get("ADMIN_PORTAL_DATABASE_URL")
+    if _admin_pool is None and admin_dsn:
+        logger.info("Initializing Admin PostgreSQL connection pool", extra={"event": "admin_database_pool_initializing"})
+        retries = 5
+        for attempt in range(retries):
+            try:
+                _admin_pool = await asyncpg.create_pool(
+                    dsn=admin_dsn,
+                    ssl="require",
+                    min_size=1,
+                    max_size=5,
+                    command_timeout=120,
+                    max_inactive_connection_lifetime=30,
+                )
+                break
+            except Exception as e:
+                if "EMAXCONNSESSION" in str(e) and attempt < retries - 1:
+                    logger.warning(
+                        "Admin Database connection limit reached; retrying",
+                        extra={"event": "admin_database_pool_retry"},
+                    )
+                    await asyncio.sleep(5)
+                else:
+                    raise
+    return _admin_pool
+
+async def close_pool():
+    global _pool
+    if _pool:
+        await _pool.close()
+        _pool = None
+        logger.info("Closed PostgreSQL connection pool", extra={"event": "database_pool_closed"})
+
+async def close_admin_pool():
+    global _admin_pool
+    if _admin_pool:
+        await _admin_pool.close()
+        _admin_pool = None
+        logger.info("Closed Admin PostgreSQL connection pool", extra={"event": "admin_database_pool_closed"})
+
+async def reset_pool():
+    """Drop the current pool and create a fresh one after connection failures."""
+    global _pool
+    old_pool = _pool
+    _pool = None
+    if old_pool:
+        try:
+            await asyncio.wait_for(old_pool.close(), timeout=5)
+        except Exception:
+            old_pool.terminate()
+    return await create_pool()
+
+
+def get_pool() -> asyncpg.Pool:
+    if _pool is None:
+        raise RuntimeError("Database pool not initialised. Call create_pool() first.")
+    return _pool
+
+def get_admin_pool() -> asyncpg.Pool:
+    if _admin_pool is None:
+        raise RuntimeError("Admin database pool not initialised. Call create_admin_pool() first.")
+    return _admin_pool
+
+@asynccontextmanager
+async def get_conn():
+    async with get_pool().acquire() as conn:
+        yield conn
+
+@asynccontextmanager
+async def get_admin_conn():
+    async with get_admin_pool().acquire() as conn:
+        yield conn
+
+async def fetch_one(sql: str, *args):
+    async with get_conn() as conn:
+        row = await conn.fetchrow(sql, *args)
+        return dict(row) if row else None
+
+async def fetch_one_admin(sql: str, *args):
+    async with get_admin_conn() as conn:
+        row = await conn.fetchrow(sql, *args)
+        return dict(row) if row else None
+ 
+async def fetch_all(sql: str, *args):
+    async with get_conn() as conn:
+        rows = await conn.fetch(sql, *args)
+        return [dict(r) for r in rows]
+
+async def fetch_all_admin(sql: str, *args):
+    async with get_admin_conn() as conn:
+        rows = await conn.fetch(sql, *args)
+        return [dict(r) for r in rows]
+ 
+async def execute(sql: str, *args):
+    async with get_conn() as conn:
+        row = await conn.fetchrow(sql, *args)
+        return dict(row) if row else None
+
+async def execute_admin(sql: str, *args):
+    async with get_admin_conn() as conn:
+        row = await conn.fetchrow(sql, *args)
+        return dict(row) if row else None
+ 
+async def execute_many(sql: str, args_list: list):
+    async with get_conn() as conn:
+        await conn.executemany(sql, args_list)
+
+async def execute_many_admin(sql: str, args_list: list):
+    async with get_admin_conn() as conn:
+        await conn.executemany(sql, args_list)

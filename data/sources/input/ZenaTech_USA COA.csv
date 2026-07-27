@@ -1,0 +1,236 @@
+Account number,Account name,Account type,Detail type
+1000,BOA - 7458 (Pace Plus),Bank,Checking
+1005,BOA - 9016 (ZooOffice),Bank,Checking
+1010,BOA - 5974 (PsPortals),Bank,Checking
+1015,BOA - 0835 (Workaware),Bank,Checking
+1020,BOA - 4794 (SystemView),Bank,Checking
+1025,BOA - 9058 (ZigVoice),Bank,Checking
+1030,BOA - 5169 (ZenaDrone),Bank,Checking
+1035,BOA - 7692 (ZenaTech),Bank,Checking
+1040,BOA - 4726 (Ecker),Bank,Checking
+1041,BOA - 8454 (Interactive),Bank,Checking
+1042,BOA - 9572 (InterlinkOne),Bank,Checking
+1045,TD Bank - 1964 (PsPortals),Bank,Checking
+1050,US Bank-1194 (PsPortals),Bank,Checking
+1051,US Bank-9690 (Interactive),Bank,Checking
+1052,US Bank-8912 (ZenaTech),Bank,Checking
+1090,First Merchants Bank - 5774,Bank,Checking
+1098,Naperville B&T - 8267,Bank,Checking
+1099,Bank Clearing Account,Bank,Checking
+1100,Accounts Receivable,Accounts receivable (A/R),Accounts Receivable (A/R)
+1105,Allowance for Doubtful Accounts,Other Current Assets,Other Current Assets
+1120,Undeposited Funds,Other Current Assets,Undeposited Funds
+1125,Funds on Deposit,Other Current Assets,Other Current Assets
+1150,Supplies Inventory,Other Current Assets,Other Current Assets
+1160,Product Inventory,Other Current Assets,Other Current Assets
+1300,Employee Advances,Other Current Assets,Other Current Assets
+1400,Prepaid Expenses,Other Current Assets,Other Current Assets
+1445,Short-term Investment,Other Current Assets,Other Current Assets
+1499,Other Current Assets,Other Current Assets,Other Current Assets
+,Inventory Asset,Other Current Assets,Inventory
+,Uncategorized Asset,Other Current Assets,Other Current Assets
+1500,Computers and Related Equipment,Fixed Assets,Other fixed assets
+1510,Furniture and Fixtures,Fixed Assets,Other fixed assets
+1520,Vehicles,Fixed Assets,Other fixed assets
+1530,Leasehold Improvements,Fixed Assets,Other fixed assets
+1550,Business Equipment,Fixed Assets,Other fixed assets
+1600,Building - Address,Fixed Assets,Other fixed assets
+1650,Land - Address,Fixed Assets,Other fixed assets
+1700,Accumulated Depreciation,Fixed Assets,Other fixed assets
+1800,Right of Use Asset,Other Assets,Other Long-term Assets
+1850,Deferred Costs,Other Assets,Other Long-term Assets
+1900,Investment in Tillerstack,Other Assets,Other Long-term Assets
+1902,Investment in Taiwan,Other Assets,Other Long-term Assets
+1903,Investment in Sharjah UAE,Other Assets,Other Long-term Assets
+1904,Investment in Turkeey,Other Assets,Other Long-term Assets
+1905,Investment in Pakistan,Other Assets,Other Long-term Assets
+1906,Investment in India,Other Assets,Other Long-term Assets
+1940,Product Development Costs,Other Assets,Other Long-term Assets
+1949,Product Developmt - Accum Amort,Other Assets,Other Long-term Assets
+1960,Note Receivable from John Gray,Other Assets,Other Long-term Assets
+1970,Goodwill,Other Assets,Other Long-term Assets
+1999,Other LT Assets,Other Assets,Other Long-term Assets
+2000,Accounts Payable,Accounts payable (A/P),Accounts Payable (A/P)
+2010,Amex - 77002 (InterlinkOne),Credit Card,Credit Card
+2011,US Bank - 0292 (Interactive),Credit Card,Credit Card
+2012,Capital One - 4511 (PsPortals),Credit Card,Credit Card
+2013,BOA Credit 0453(ZenaTech),Credit Card,Credit Card
+2001,Earnout Liability,Other Current Liabilities,Other Current Liabilities
+2100,Payroll Liabilities,Other Current Liabilities,Payroll Tax Payable
+2110,Direct Deposit Liabilities,Other Current Liabilities,Other Current Liabilities
+2130,Sales Tax Payable,Other Current Liabilities,Sales Tax Payable
+2140,Income Tax Payable,Other Current Liabilities,Other Current Liabilities
+2150,Accrued Interest Expense,Other Current Liabilities,Other Current Liabilities
+2160,Other Accrued Expenses,Other Current Liabilities,Other Current Liabilities
+2190,Deferred Revenue,Other Current Liabilities,Other Current Liabilities
+2195,Short-term Debt,Other Current Liabilities,Other Current Liabilities
+2199,Other Current Liabilities,Other Current Liabilities,Other Current Liabilities
+2300,Current Portion Lease Obligatin,Other Current Liabilities,Other Current Liabilities
+2310,TDBank -  LOC (PsPortals),Other Current Liabilities,Other Current Liabilities
+2400,Intercompany Accounts,Other Current Liabilities,Other Current Liabilities
+2405,Intercompany Accounts:I/C - Epazz,Other Current Liabilities,Other Current Liabilities
+2406,Intercompany Accounts:I/C - Provitrac Inc,Other Current Liabilities,Other Current Liabilities
+2407,Intercompany Accounts:I/C - K9 Sky Inc,Other Current Liabilities,Other Current Liabilities
+2408,Intercompany Accounts:I/C - Ecker Capital,Other Current Liabilities,Other Current Liabilities
+2415,Intercompany Accounts:I/C - Drone as a Service,Other Current Liabilities,Other Current Liabilities
+2416,Intercompany Accounts:I/C - Weddle LS,Other Current Liabilities,Other Current Liabilities
+2417,Intercompany Accounts:I/C - KJM LS,Other Current Liabilities,Other Current Liabilities
+2418,Intercompany Accounts:I/C - Wallace LS,Other Current Liabilities,Other Current Liabilities
+2419,Intercompany Accounts:I/C - Miller LS,Other Current Liabilities,Other Current Liabilities
+2420,Intercompany Accounts:I/C - Laventure LS,Other Current Liabilities,Other Current Liabilities
+2421,Intercompany Accounts:I/C - Empire LS,Other Current Liabilities,Other Current Liabilities
+2422,Intercompany Accounts:I/C - Morgan LS,Other Current Liabilities,Other Current Liabilities
+2423,Intercompany Accounts:I/C - Cardinal LS,Other Current Liabilities,Other Current Liabilities
+2424,Intercompany Accounts:I/C - Lescure LS,Other Current Liabilities,Other Current Liabilities
+2425,Intercompany Accounts:I/C - A&J LS,Other Current Liabilities,Other Current Liabilities
+2426,Intercompany Accounts:I/C - Putt LS,Other Current Liabilities,Other Current Liabilities
+2427,Intercompany Accounts:I/C  - Rampart LS,Other Current Liabilities,Other Current Liabilities
+2428,Intercompany Accounts:I/C - Smith LS,Other Current Liabilities,Other Current Liabilities
+2429,Intercompany Accounts:I/C - Casado LS,Other Current Liabilities,Other Current Liabilities
+2430,Intercompany Accounts:I/C - Vara,Other Current Liabilities,Other Current Liabilities
+2431,Intercompany Accounts:I/C - Holt LS,Other Current Liabilities,Other Current Liabilities
+2432,Intercompany Accounts:I/C - LD King LS,Other Current Liabilities,Other Current Liabilities
+2433,Intercompany Accounts:I/C - Sunrise,Other Current Liabilities,Other Current Liabilities
+2434,Intercompany Accounts:I/C - Andrew LS,Other Current Liabilities,Other Current Liabilities
+2435,Intercompany Accounts:I/C - Andy Paris LS,Other Current Liabilities,Other Current Liabilities
+2460,Intercompany Accounts:I/C - Pace Plus Inc,Other Current Liabilities,Other Current Liabilities
+2461,Intercompany Accounts:I/C - OtherShip-UK,Other Current Liabilities,Other Current Liabilities
+2462,Intercompany Accounts:I/C Now Solutions USA,Other Current Liabilities,Other Current Liabilities
+2463,Intercompany Accounts:I/C - Now Solutions CAN,Other Current Liabilities,Other Current Liabilities
+2464,Intercompany Accounts:I/C - Spider Vision,Other Current Liabilities,Other Current Liabilities
+2465,Intercompany Accounts:I/C - Zena Drone Havacilik Hizmetleri Lmt,Other Current Liabilities,Other Current Liabilities
+2485,Intercompany Accounts:I/C - ZenaTech Inc (CAN),Other Current Liabilities,Other Current Liabilities
+2486,Intercompany Accounts:I/C - TillerStack,Other Current Liabilities,Other Current Liabilities
+2488,Intercompany Accounts:I/C - ZenaDrone Trading Dubai,Other Current Liabilities,Other Current Liabilities
+2489,Intercompany Accounts:I/C - Zena Pay,Other Current Liabilities,Other Current Liabilities
+2499,Intercompany Accounts:I/C - Ameritek Ventures,Other Current Liabilities,Other Current Liabilities
+,Canadian revenue Agency Payable,Other Current Liabilities,Global Tax Payable
+,Canadian revenue Agency Payable:Sales Tax Payable,Other Current Liabilities,Sales Tax Payable
+,Illinois Department of Revenue Payable,Other Current Liabilities,Global Tax Payable
+,Illinois Department of Revenue Payable:Sales Tax Payable,Other Current Liabilities,Sales Tax Payable
+,Sales Tax Agency Payable,Other Current Liabilities,Global Tax Payable
+,Sales Tax Agency Payable:Sales Tax Payable,Other Current Liabilities,Sales Tax Payable
+2500,Long-term Lease Obligation,Long Term Liabilities,Other Long Term Liabilities
+2505,SBA Loan - Interactive Systems,Long Term Liabilities,Other Long Term Liabilities
+2506,SBA Loan - ZooOffice,Long Term Liabilities,Other Long Term Liabilities
+2507,SBFS LLC Loan dba RapidAdvance,Long Term Liabilities,Other Long Term Liabilities
+2512,Loan - GG Mars (LOC),Long Term Liabilities,Other Long Term Liabilities
+2514,Loan - Star Fincl (LOC),Long Term Liabilities,Other Long Term Liabilities
+2520,Loan - Jennings Investmts (LOC),Long Term Liabilities,Other Long Term Liabilities
+2522,Loan - LoneStella Inc (LOC),Long Term Liabilities,Other Long Term Liabilities
+2524,Loan - Mercy and Grace Inc.,Long Term Liabilities,Other Long Term Liabilities
+2531,Weddle Surveying Acqusition Nt,Long Term Liabilities,Other Long Term Liabilities
+2532,KJM Surveying Acqusition Note,Long Term Liabilities,Other Long Term Liabilities
+2533,Othership UK Acqusition Note,Long Term Liabilities,Other Long Term Liabilities
+2534,Wallace Surveying Acquisition N,Long Term Liabilities,Other Long Term Liabilities
+2535,Miller Surveying Acquisition Nt,Long Term Liabilities,Other Long Term Liabilities
+2536,Laventure Surveying Acquisition,Long Term Liabilities,Other Long Term Liabilities
+2537,Empire Surveying Acqusition Nt,Long Term Liabilities,Other Long Term Liabilities
+2538,Morgan Surveying Note,Long Term Liabilities,Other Long Term Liabilities
+2539,Cardinal Civil Resources Nt,Long Term Liabilities,Other Long Term Liabilities
+2540,Lescure Engineers Note,Long Term Liabilities,Other Long Term Liabilities
+2541,A&J Land Surveyors Note,Long Term Liabilities,Other Long Term Liabilities
+2542,Putt Land Surveying Note,Long Term Liabilities,Other Long Term Liabilities
+2543,Rampart Land Survey Note,Long Term Liabilities,Other Long Term Liabilities
+2544,Smith Suvey Loan,Long Term Liabilities,Other Long Term Liabilities
+2545,Casado Design Note,Long Term Liabilities,Notes Payable
+2546,"Vara 3D, Inc Note",Long Term Liabilities,Notes Payable
+2547,Holt Surveying Note,Long Term Liabilities,Notes Payable
+2548,LD King Note,Long Term Liabilities,Notes Payable
+2549,Sunrise Window Note,Long Term Liabilities,Notes Payable
+2550,Andrew Spiewak Note,Long Term Liabilities,Notes Payable
+2551,Andy Paris LS Note,Long Term Liabilities,Notes Payable
+2560,Debenture-100K-GG Mars,Long Term Liabilities,Other Long Term Liabilities
+2999,Other LT Liabilities,Long Term Liabilities,Other Long Term Liabilities
+3500,Common Stock,Equity,Opening Balance Equity
+3999,Retained Earnings,Equity,Retained Earnings
+4100,Hardware Sales,Income,Sales of Product Income
+4200,Hosting Services,Income,Sales of Product Income
+4300,Consulting Services,Income,Sales of Product Income
+4400,License and Fee Income,Income,Sales of Product Income
+4500,Subscription Services,Income,Sales of Product Income
+4600,Support and Maintenance,Income,Sales of Product Income
+4900,Miscellaneous Income,Income,Sales of Product Income
+4900A,DO NOT USE,Income,Sales of Product Income
+,Billable Expense Income,Income,Sales of Product Income
+,Markup,Income,Sales of Product Income
+,Sales,Income,Sales of Product Income
+,Sales of Product Income,Income,Sales of Product Income
+,Shipping Income,Income,Sales of Product Income
+,Unapplied Cash Payment Income,Income,Unapplied Cash Payment Income
+,Uncategorized Income,Income,Sales of Product Income
+5000,Cost of Goods Sold,Cost of Goods Sold,Supplies & Materials - COGS
+5100,Web Hosting Fees,Cost of Goods Sold,Supplies & Materials - COGS
+5200,Other Web Services,Cost of Goods Sold,Supplies & Materials - COGS
+5400,Subcontracted Production Labor,Cost of Goods Sold,Supplies & Materials - COGS
+5800,Programming and support fees,Cost of Goods Sold,Supplies & Materials - COGS
+5900,Freight and Shipping Costs,Cost of Goods Sold,Supplies & Materials - COGS
+6000,Advertising and Promotion,Expenses,Other Miscellaneous Service Cost
+6100,Payroll Expenses,Expenses,Payroll Expenses
+6110,Payroll Expenses:Salaries and Wages,Expenses,Other Miscellaneous Service Cost
+6120,Payroll Expenses:Employer Taxes,Expenses,Other Miscellaneous Service Cost
+6130,Payroll Expenses:Subcontract Admin Labor,Expenses,Other Miscellaneous Service Cost
+6140,Payroll Expenses:Payroll Service Fees,Expenses,Other Miscellaneous Service Cost
+6150,Payroll Expenses:Professional Development,Expenses,Other Miscellaneous Service Cost
+6160,Payroll Expenses:Uniforms,Expenses,Other Miscellaneous Service Cost
+6170,Payroll Expenses:Recruitment,Expenses,Other Miscellaneous Service Cost
+6200,Employee Benefits,Expenses,Other Miscellaneous Service Cost
+6210,Employee Benefits:Health Insurance,Expenses,Other Miscellaneous Service Cost
+6220,Employee Benefits:Life and Disability Insurance,Expenses,Other Miscellaneous Service Cost
+6230,Employee Benefits:Worker's Compensation Ins,Expenses,Other Miscellaneous Service Cost
+6240,Employee Benefits:Pension and Retirement Savings,Expenses,Other Miscellaneous Service Cost
+6299,Employee Benefits:Other Employee Benefits,Expenses,Other Miscellaneous Service Cost
+6300,Office Expense,Expenses,Other Miscellaneous Service Cost
+6310,Office Expense:Rent Expense,Expenses,Other Miscellaneous Service Cost
+6320,Office Expense:Security Expense,Expenses,Other Miscellaneous Service Cost
+6330,Office Expense:Repairs and Maintenance,Expenses,Other Miscellaneous Service Cost
+6340,Office Expense:Office Supplies,Expenses,Other Miscellaneous Service Cost
+6350,Office Expense:Telephone / Mobile Expense,Expenses,Other Miscellaneous Service Cost
+6360,Office Expense:Computer and Internet Expenses,Expenses,Other Miscellaneous Service Cost
+6370,Office Expense:Utilities,Expenses,Other Miscellaneous Service Cost
+6380,Office Expense:Postage and Delivery,Expenses,Other Miscellaneous Service Cost
+6390,Office Expense:Dues and Subscriptions,Expenses,Other Miscellaneous Service Cost
+6400,Auto Expense,Expenses,Other Miscellaneous Service Cost
+6500,Travel Expense,Expenses,Other Miscellaneous Service Cost
+6510,Travel Expense:Transportation,Expenses,Other Miscellaneous Service Cost
+6520,Travel Expense:Lodging,Expenses,Other Miscellaneous Service Cost
+6530,Travel Expense:Meals,Expenses,Other Miscellaneous Service Cost
+6540,Travel Expense:Entertainment,Expenses,Other Miscellaneous Service Cost
+6600,Professional Fees,Expenses,Other Miscellaneous Service Cost
+6610,Professional Fees:Accounting,Expenses,Other Miscellaneous Service Cost
+6620,Professional Fees:Legal,Expenses,Other Miscellaneous Service Cost
+6630,Professional Fees:Regulatory Fees,Expenses,Other Miscellaneous Service Cost
+6640,Professional Fees:Commission on Marketable Securities,Expenses,Other Business Expenses
+6699,Professional Fees:Other Professional Fees,Expenses,Other Miscellaneous Service Cost
+6700,Other Expenses,Expenses,Other Miscellaneous Service Cost
+6710,Other Expenses:Bank Service Charges,Expenses,Other Miscellaneous Service Cost
+6720,Other Expenses:Merchant Account Fees,Expenses,Other Miscellaneous Service Cost
+6730,Other Expenses:Stock Ledger Services,Expenses,Other Miscellaneous Service Cost
+6740,Other Expenses:General Liability Insurance,Expenses,Other Miscellaneous Service Cost
+6750,Other Expenses:Business Licenses and Permits,Expenses,Other Miscellaneous Service Cost
+6760,Other Expenses:Charitable Contributions,Expenses,Other Miscellaneous Service Cost
+6770,Other Expenses:Uncategorized Expenses,Expenses,Other Miscellaneous Service Cost
+6780,Other Expenses:Bad Debts Expense,Expenses,Other Miscellaneous Service Cost
+6799,Other Expenses:Miscellaneous Expense,Expenses,Other Miscellaneous Service Cost
+6800,Depreciation Expense,Expenses,Other Miscellaneous Service Cost
+6890,Amortization Expense,Expenses,Other Miscellaneous Service Cost
+6900,Tax Expense,Expenses,Other Miscellaneous Service Cost
+6910,Tax Expense:Property Taxes,Expenses,Other Miscellaneous Service Cost
+6920,Tax Expense:State Sales Tax,Expenses,Other Miscellaneous Service Cost
+6930,Tax Expense:State Income Tax,Expenses,Other Miscellaneous Service Cost
+6990,Tax Expense:Federal Income Tax,Expenses,Other Miscellaneous Service Cost
+6999,Tax Expense:Penalty - Nondeductable,Expenses,Other Miscellaneous Service Cost
+,Purchases,Expenses,Supplies & Materials
+,Unapplied Cash Bill Payment Expense,Expenses,Unapplied Cash Bill Payment Expense
+,Uncategorized Expense,Expenses,Other Miscellaneous Service Cost
+7000,Interest Income,Other Income,Other Miscellaneous Income
+7500,Gain on Asset Disposal,Other Income,Other Miscellaneous Income
+7800,Gain on Extinguishment of Debt,Other Income,Other Miscellaneous Income
+7999,Other Non-operation Income,Other Income,Other Miscellaneous Income
+8700,Exchange Gain or Loss,Other Income,Other Miscellaneous Income
+9900,Unrealized Gain / (Loss),Other Income,Other Miscellaneous Income
+8000,Interest Expense,Other Expense,Other Miscellaneous Expense
+8500,Loss on Asset Disposal,Other Expense,Other Miscellaneous Expense
+8998,Intercompany Closing,Other Expense,Other Miscellaneous Expense
+8999,Other Non-operation Expense,Other Expense,Other Miscellaneous Expense
+,Reconciliation Discrepancies,Other Expense,Other Miscellaneous Expense

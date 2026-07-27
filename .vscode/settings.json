@@ -1,0 +1,4 @@
+{
+    "python-envs.defaultEnvManager": "ms-python.python:venv",
+    "python.defaultInterpreterPath": "/mnt/c/dev/enterprise_system/mcp-server/venv/bin/python"
+}

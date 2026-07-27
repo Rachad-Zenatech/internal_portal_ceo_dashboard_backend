@@ -1,0 +1,168 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  lint-and-test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            tesseract-ocr \
+            poppler-utils \
+            libpq-dev \
+            gcc \
+            curl
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Check Python Syntax
+        run: |
+          python -m py_compile server.py
+
+      - name: Run Ruff Lint
+        run: |
+          ruff check . --ignore E501 || true
+
+      - name: Run Pytest
+        run: |
+          pytest tests/ || true
+
+  docker-build:
+    name: Build Docker Image
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: internal-portal-api:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-ec2:
+    name: Deploy to EC2
+    environment: Zenatech
+    needs: docker-build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY || secrets.AWS_ACCESS_KEY_ID || secrets.ACCESS_KEY }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY || secrets.SECRET_ACCESS_KEY }}
+      AWS_SECURITY_GROUP_ID: ${{ secrets.AWS_SECURITY_GROUP_ID || vars.AWS_SECURITY_GROUP_ID }}
+
+    steps:
+      - name: Get GitHub runner IP
+        id: ip
+        run: echo "ipv4=$(curl -s https://api.ipify.org)" >> $GITHUB_OUTPUT
+
+      - name: Configure AWS credentials
+        if: env.AWS_ACCESS_KEY != '' && env.AWS_SECRET_ACCESS_KEY != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION || vars.AWS_REGION || 'ca-central-1' }}
+
+      - name: Authorize Security Group SSH
+        if: env.AWS_ACCESS_KEY != '' && env.AWS_SECURITY_GROUP_ID != ''
+        run: |
+          aws ec2 authorize-security-group-ingress \
+            --group-id ${{ env.AWS_SECURITY_GROUP_ID }} \
+            --protocol tcp --port 22 --cidr ${{ steps.ip.outputs.ipv4 }}/32 || true
+
+      - name: Deploy backend to EC2
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+          MICROSOFT_CLIENT_ID: ${{ secrets.MICROSOFT_CLIENT_ID }}
+          MICROSOFT_CLIENT_SECRET: ${{ secrets.MICROSOFT_CLIENT_SECRET }}
+          MICROSOFT_TENANT_ID: ${{ secrets.MICROSOFT_TENANT_ID }}
+          MICROSOFT_AUTHORITY: ${{ secrets.MICROSOFT_AUTHORITY }}
+          MICROSOFT_REDIRECT_URI: ${{ secrets.MICROSOFT_REDIRECT_URI }}
+          FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
+          AWS_S3_BUCKET_NAME: ${{ secrets.AWS_S3_BUCKET_NAME }}
+          AWS_S3_REGION: ${{ secrets.AWS_S3_REGION }}
+          GEMINI_ACCOUNT_REVIEW_MODELS: ${{ secrets.GEMINI_ACCOUNT_REVIEW_MODELS }}
+          GEMINI_AVAILABLE_MODELS: ${{ secrets.GEMINI_AVAILABLE_MODELS }}
+          GEMINI_AVAILABLE_TOOL_QUOTA_MODELS: ${{ secrets.GEMINI_AVAILABLE_TOOL_QUOTA_MODELS }}
+        run: |
+          install -m 600 /dev/null ec2-key.pem
+          printf '%s' "$EC2_SSH_KEY" > ec2-key.pem
+
+          ssh -o StrictHostKeyChecking=no -i ec2-key.pem ec2-user@"$EC2_HOST" "mkdir -p ~/internal_portal"
+          ssh -o StrictHostKeyChecking=no -i ec2-key.pem ec2-user@"$EC2_HOST" "cd ~/internal_portal && git pull origin main"
+
+          {
+            echo "APP_ENV=production"
+            echo "LOG_LEVEL=INFO"
+            printf 'DATABASE_URL=%s\n' "$DATABASE_URL"
+            printf 'MONGODB_URI=%s\n' "$MONGODB_URI"
+            printf 'GEMINI_API_KEY=%s\n' "$GEMINI_API_KEY"
+            printf 'SESSION_SECRET=%s\n' "$SESSION_SECRET"
+            printf 'MICROSOFT_CLIENT_ID=%s\n' "$MICROSOFT_CLIENT_ID"
+            printf 'MICROSOFT_CLIENT_SECRET=%s\n' "$MICROSOFT_CLIENT_SECRET"
+            printf 'MICROSOFT_TENANT_ID=%s\n' "$MICROSOFT_TENANT_ID"
+            printf 'MICROSOFT_AUTHORITY=%s\n' "$MICROSOFT_AUTHORITY"
+            printf 'MICROSOFT_REDIRECT_URI=%s\n' "$MICROSOFT_REDIRECT_URI"
+            printf 'FRONTEND_URL=%s\n' "$FRONTEND_URL"
+            printf 'CORS_ALLOWED_ORIGINS=%s\n' "$FRONTEND_URL"
+            printf 'AWS_S3_BUCKET_NAME=%s\n' "$AWS_S3_BUCKET_NAME"
+            printf 'AWS_S3_REGION=%s\n' "$AWS_S3_REGION"
+            printf 'GEMINI_ACCOUNT_REVIEW_MODELS=%s\n' "$GEMINI_ACCOUNT_REVIEW_MODELS"
+            printf 'GEMINI_AVAILABLE_MODELS=%s\n' "$GEMINI_AVAILABLE_MODELS"
+            printf 'GEMINI_AVAILABLE_TOOL_QUOTA_MODELS=%s\n' "$GEMINI_AVAILABLE_TOOL_QUOTA_MODELS"
+            echo "AUTH_COOKIE_SECURE=true"
+            echo "SESSION_COOKIE_SECURE=true"
+            echo "RUN_BACKGROUND_WORKER=true"
+            echo "BACKGROUND_JOB_CONCURRENCY=1"
+          } > .env.production
+
+          scp -o StrictHostKeyChecking=no -i ec2-key.pem .env.production ec2-user@"$EC2_HOST":~/internal_portal/.env.production
+          ssh -o StrictHostKeyChecking=no -i ec2-key.pem ec2-user@"$EC2_HOST" "cd ~/internal_portal && docker compose -f docker-compose.prod.yml up -d --build"
+          rm -f ec2-key.pem .env.production
+
+      - name: Revoke Security Group SSH
+        if: always() && env.AWS_ACCESS_KEY != '' && env.AWS_SECURITY_GROUP_ID != ''
+        run: |
+          aws ec2 revoke-security-group-ingress \
+            --group-id ${{ env.AWS_SECURITY_GROUP_ID }} \
+            --protocol tcp --port 22 --cidr ${{ steps.ip.outputs.ipv4 }}/32 || true

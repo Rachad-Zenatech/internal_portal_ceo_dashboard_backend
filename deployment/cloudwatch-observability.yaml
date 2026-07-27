@@ -1,0 +1,50 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: CloudWatch error metric and alarm for the Zenatech application log group.
+
+Parameters:
+  ApplicationLogGroupName:
+    Type: String
+    Description: Existing CloudWatch Logs log group used by the API container.
+  AlarmTopicArn:
+    Type: String
+    Default: ""
+    Description: Optional SNS topic ARN for email, PagerDuty, Slack, or other notifications.
+
+Conditions:
+  HasAlarmTopic: !Not [!Equals [!Ref AlarmTopicArn, ""]]
+
+Resources:
+  ApplicationErrorMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref ApplicationLogGroupName
+      FilterName: zenatech-application-errors
+      FilterPattern: '{ $.level = "ERROR" }'
+      MetricTransformations:
+        - MetricNamespace: Zenatech/Application
+          MetricName: ErrorCount
+          MetricValue: "1"
+          DefaultValue: 0
+
+  ApplicationErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: zenatech-application-errors
+      AlarmDescription: Application emitted one or more ERROR logs in five minutes.
+      Namespace: Zenatech/Application
+      MetricName: ErrorCount
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAlarmTopic
+        - [!Ref AlarmTopicArn]
+        - !Ref AWS::NoValue
+
+Outputs:
+  ErrorAlarmName:
+    Value: !Ref ApplicationErrorAlarm
