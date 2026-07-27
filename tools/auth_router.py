@@ -89,7 +89,7 @@ async def microsoft_callback(request: Request):
     # Connect Microsoft Entra identity to local RBAC
     user = await upsertMicrosoftUser(claims)
     
-    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5174")
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
     
     if not user.get("is_active"):
         await log_login_activity(claims['email'], user["id"], False, "Account pending/inactive", ip_address, user_agent)
@@ -98,7 +98,7 @@ async def microsoft_callback(request: Request):
     await log_login_activity(claims['email'], user["id"], True, None, ip_address, user_agent)
             
     access_token = create_access_token(user["id"], user["is_super_admin"])
-    response = RedirectResponse(f"{frontend_url}/login?status=success")
+    response = RedirectResponse(f"{frontend_url}/login?status=success&token={access_token}")
     set_access_token_cookie(response, access_token)
     return response
 

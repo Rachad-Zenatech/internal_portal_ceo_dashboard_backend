@@ -1,18 +1,17 @@
-# Claude Project Skill
+﻿# Claude Project Skill
 
 Lean rules for the enterprise backend workspace.
 
 ## Stack
 
 - FastAPI routers in `tools/`, service/DB logic in `services/`, Pydantic models in `models/`, DB helpers in `postgresql_db/database.py`.
-- Keep request/response shapes aligned with frontend `src/types` in `C:\dev\enterprise_system\front\admin_frontend`.
+- Keep request/response shapes aligned with frontend `src/types` in `C:\dev\enterprise_system\front\ceo_frontend`.
 - Frontend reusable API/domain types must not live in services or hooks.
 
 ## Backend
 
 - Put endpoints in `tools/*`; keep SQL and business rules in `services/*`.
 - Use asyncpg placeholders, transactions for related writes, and aliases for service imports that would shadow route handlers.
-- Preserve route namespaces: `/accounting`, `/bank_statement`, `/dashboard`, `/reports`, `/upload-files`, `/company`.
 - Avoid destructive accounting operations unless route and UI explicitly say replace.
 
 ## General Ledger

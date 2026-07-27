@@ -1,11 +1,11 @@
-# Codex Project Skill
+﻿# Codex Project Skill
 
 Lean rules for the enterprise backend workspace.
 
 ## Stack
 
 - FastAPI routers in `tools/`, async business/DB logic in `services/`, Pydantic schemas in `models/`, DB helpers in `postgresql_db/database.py`.
-- Frontend workspace: `C:\dev\enterprise_system\front\admin_frontend`.
+- Frontend workspace: `C:\dev\enterprise_system\front\ceo_frontend`.
 - Keep backend contracts synchronized with frontend `src/types`; reusable frontend API types stay out of services/hooks.
 
 ## Backend
