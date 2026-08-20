@@ -1,4 +1,4 @@
-# server.py
+﻿# server.py
 import asyncio
 import logging
 import os
@@ -8,6 +8,10 @@ from contextlib import asynccontextmanager
 from functools import partial
 from typing import List, Optional
 from uuid import UUID, uuid4
+import sys
+
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -16,7 +20,7 @@ from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
-from postgresql_db.database import close_pool, create_pool, fetch_one, create_admin_pool, close_admin_pool
+from postgresql_db.database import close_pool, create_pool, fetch_one, get_pool, create_admin_pool, close_admin_pool
 from services.logging_service import (
     asyncio_exception_handler,
     configure_logging,
@@ -33,10 +37,11 @@ from tools.rbac_router import router as rbac_router
 from tools.auth_router import router as auth_router
 from tools.notification_router import notification_router
 from tools.observability import router as observability_router
+from tools.dashboard import router as dashboard_router
+from tools.ceo_integration_router import router as ceo_integration_router
 
 # MCP tools
 from mcp_tools import register_all as register_mcp_tools, ask_gemini, ask_gemini_stream, sync_mcp_tools_to_vector_db
-
 
 
 # FastAPI, MCP tools, and the lightweight worker share one DB pool in this process.
@@ -49,6 +54,30 @@ async def lifespan(app: FastAPI):
     try:
         await create_pool()
         await create_admin_pool()
+        # Initialize CEO Events and Audit Tables per Proposal 1
+        async with get_pool().acquire() as conn:
+            await conn.execute('''
+                CREATE TABLE IF NOT EXISTS ceo_events (
+                    id BIGSERIAL PRIMARY KEY,
+                    event_type VARCHAR(100) NOT NULL,
+                    source VARCHAR(100) NOT NULL,
+                    entity_id VARCHAR(100) NOT NULL,
+                    data JSONB DEFAULT '{}'::jsonb,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                );
+
+                CREATE TABLE IF NOT EXISTS ceo_audit_logs (
+                    id BIGSERIAL PRIMARY KEY,
+                    action VARCHAR(100) NOT NULL,
+                    source_application VARCHAR(100) NOT NULL,
+                    target_application VARCHAR(100) NOT NULL,
+                    target_entity VARCHAR(100) NOT NULL,
+                    requested_by VARCHAR(255) NOT NULL,
+                    result VARCHAR(50) NOT NULL,
+                    details JSONB DEFAULT '{}'::jsonb,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                );
+            ''')
     except Exception:
         logger.exception("Application startup failed", extra={"event": "application_startup_failed"})
         raise
@@ -80,8 +109,8 @@ class ChatRequest(BaseModel):
     mime_type: Optional[str] = Field(default=None, max_length=255)
 
 app = FastAPI(
-    title="Zenatech MCP Server",
-    version="0.1.0",
+    title="Zenatech CEO Dashboard API",
+    version="1.0.0",
     lifespan=lifespan
 )
 
@@ -94,7 +123,6 @@ from tools.rbac_router import get_current_user_id
 
 @app.post("/ai/chat")
 async def ai_chat(req: ChatRequest, user_id: UUID = Depends(get_current_user_id)):
-    # Chat requests carry the authenticated user through service code and MCP tool calls.
     try:
         current_user_id_ctx.set(user_id)
         async def stream_generator():
@@ -123,22 +151,14 @@ async def ai_chat(req: ChatRequest, user_id: UUID = Depends(get_current_user_id)
             status_code=500
         )
 
-# MCP server registration lives beside FastAPI so local tools and HTTP routes share service code.
-mcp = FastMCP("Zenatech MCP Server")
-
-# Register every MCP tool defined under the mcp_tools package.
+# MCP server registration
+mcp = FastMCP("Zenatech CEO Dashboard MCP Server")
 register_mcp_tools(mcp)
-
-
-# HTTP route registration.
-# @app.post("/ai/chat")
-# async def ai_chat(req: ChatRequest):
-#     return await ask_gemini(req.message)
 
 
 @app.get("/")
 async def root():
-    return {"status": "running", "service": "Zenatech MCP Server"}
+    return {"status": "running", "service": "Zenatech CEO Dashboard API"}
 
 
 @app.get("/health/live", include_in_schema=False)
@@ -165,6 +185,12 @@ app.include_router(rbac_router, prefix="/api", tags=["RBAC & Configuration"])
 app.include_router(auth_router, prefix="/api", tags=["Authentication"])
 app.include_router(observability_router, prefix="/api", tags=["Observability"])
 app.include_router(notification_router, prefix="/api", tags=["Notifications"], dependencies=authenticated)
+
+# Mount Dashboard and CEO Integration APIs
+app.include_router(dashboard_router, prefix="/api/dashboard", tags=["CEO Dashboard Metrics"])
+app.include_router(dashboard_router, prefix="/accounting", tags=["Accounting Metrics"])
+app.include_router(dashboard_router, prefix="/api/accounting", tags=["Accounting Metrics"])
+app.include_router(ceo_integration_router, prefix="/api/v1/ceo", tags=["CEO Application Integration"])
 
 app.add_middleware(
     SessionMiddleware,
@@ -280,26 +306,32 @@ async def request_observability(request: Request, call_next):
     return response
 
 
-# Keep CORS outside the request middleware so even locally generated error
-# responses include the browser-readable CORS headers.
-cors_origins = [
-    origin.strip()
-    for origin in os.getenv(
-        "CORS_ALLOWED_ORIGINS",
-        "http://localhost:5175,http://localhost:5173,http://localhost:3000",
-    ).split(",")
-    if origin.strip()
-]
+# Broad CORS for multi-app integration on local development and production
+_cors_env = os.getenv("CORS_ORIGINS", "")
+if _cors_env:
+    cors_origins = [orig.strip() for orig in _cors_env.split(",") if orig.strip()]
+else:
+    cors_origins = [
+        "http://localhost:5175",
+        "http://localhost:5174",
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://localhost:8090",
+        "http://localhost:8001",
+        "http://localhost:8005",
+        "http://127.0.0.1:5175",
+        "http://127.0.0.1:5174",
+        "http://127.0.0.1:5173",
+    ]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Accept"],
+    allow_headers=["*"],
     expose_headers=["X-Request-ID"],
 )
 
-# Direct execution starts the MCP transport; uvicorn imports app for HTTP.
 if __name__ == "__main__":
     mcp.run(
         transport="streamable-http",

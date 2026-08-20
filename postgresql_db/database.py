@@ -103,9 +103,11 @@ def get_pool() -> asyncpg.Pool:
     return _pool
 
 def get_admin_pool() -> asyncpg.Pool:
-    if _admin_pool is None:
-        raise RuntimeError("Admin database pool not initialised. Call create_admin_pool() first.")
-    return _admin_pool
+    if _admin_pool is not None:
+        return _admin_pool
+    if _pool is not None:
+        return _pool
+    raise RuntimeError("Database pool not initialised. Call create_pool() first.")
 
 @asynccontextmanager
 async def get_conn():
