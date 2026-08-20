@@ -286,7 +286,7 @@ cors_origins = [
     origin.strip()
     for origin in os.getenv(
         "CORS_ALLOWED_ORIGINS",
-        "http://localhost:5173,http://localhost:3000",
+        "http://localhost:5175,http://localhost:5173,http://localhost:3000",
     ).split(",")
     if origin.strip()
 ]
@@ -304,5 +304,5 @@ if __name__ == "__main__":
     mcp.run(
         transport="streamable-http",
         host=os.getenv("MCP_HOST", "127.0.0.1"),
-        port=int(os.getenv("MCP_PORT", "8001")),
+        port=int(os.getenv("MCP_PORT", "8005")),
     )

@@ -51,7 +51,7 @@ pip install -r requirements.txt
 ## Run development server
 
 ```bash
-uvicorn server:app --host 127.0.0.1 --port 8001
+python -m uvicorn server:app --host 127.0.0.1 --port 8005 --reload
 ```
 
 ## Security configuration
@@ -99,7 +99,7 @@ ruff format .
 Open:
 
 ```txt
-http://localhost:8000/mcp
+http://localhost:8005/mcp
 ```
 
 ---
@@ -127,7 +127,7 @@ Streamable HTTP
 Server URL:
 
 ```txt
-http://localhost:8000/mcp
+http://localhost:8005/mcp
 ```
 
 ---
@@ -137,19 +137,19 @@ http://localhost:8000/mcp
 API:
 
 ```txt
-http://localhost:8000
+http://localhost:8005
 ```
 
 Swagger docs:
 
 ```txt
-http://localhost:8000/docs
+http://localhost:8005/docs
 ```
 
 Accounting reports endpoint:
 
 ```txt
-http://localhost:8000/accounting/quarterly-reports
+http://localhost:8005/accounting/quarterly-reports
 ```
 
 ---
