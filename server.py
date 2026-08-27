@@ -1,4 +1,4 @@
-﻿# server.py
+# server.py - CEO Executive Dashboard Backend Server
 import asyncio
 import logging
 import os
@@ -39,6 +39,9 @@ from tools.notification_router import notification_router
 from tools.observability import router as observability_router
 from tools.dashboard import router as dashboard_router
 from tools.ceo_integration_router import router as ceo_integration_router
+from tools.approver_roles_router import router as approver_roles_router, ensure_approver_roles
+from tools.graph_router import router as graph_router
+from tools.workflow_assignment_router import router as workflow_assignment_router
 
 # MCP tools
 from mcp_tools import register_all as register_mcp_tools, ask_gemini, ask_gemini_stream, sync_mcp_tools_to_vector_db
@@ -78,6 +81,7 @@ async def lifespan(app: FastAPI):
                     created_at TIMESTAMPTZ DEFAULT NOW()
                 );
             ''')
+        await ensure_approver_roles()
     except Exception:
         logger.exception("Application startup failed", extra={"event": "application_startup_failed"})
         raise
@@ -191,6 +195,11 @@ app.include_router(dashboard_router, prefix="/api/dashboard", tags=["CEO Dashboa
 app.include_router(dashboard_router, prefix="/accounting", tags=["Accounting Metrics"])
 app.include_router(dashboard_router, prefix="/api/accounting", tags=["Accounting Metrics"])
 app.include_router(ceo_integration_router, prefix="/api/v1/ceo", tags=["CEO Application Integration"])
+app.include_router(approver_roles_router, prefix="/api", tags=["Approver Roles"], dependencies=authenticated)
+app.include_router(graph_router, prefix="/api", tags=["Microsoft Graph"], dependencies=authenticated)
+app.include_router(workflow_assignment_router, tags=["Workflow Assignments"], dependencies=authenticated)
+app.include_router(approver_roles_router, prefix="/api/v1/ceo", tags=["Approver Roles"], dependencies=authenticated)
+app.include_router(graph_router, prefix="/api/v1/ceo", tags=["Microsoft Graph"], dependencies=authenticated)
 
 app.add_middleware(
     SessionMiddleware,

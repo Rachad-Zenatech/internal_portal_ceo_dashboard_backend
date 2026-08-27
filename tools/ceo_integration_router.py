@@ -1,9 +1,11 @@
-﻿import json
+import json
 import logging
-from typing import List, Dict, Any, Optional
+import asyncio
+from typing import List, Dict, Any, Optional, Set
 from datetime import datetime, timezone
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Body, Header
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from postgresql_db.database import get_conn, fetch_all, fetch_one, execute
@@ -19,6 +21,20 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# In-memory SSE subscriber queues
+_event_listeners: Set[asyncio.Queue] = set()
+
+
+async def broadcast_event(event_dict: dict):
+    """
+    Broadcasts real-time events to all connected SSE clients.
+    """
+    for q in list(_event_listeners):
+        try:
+            q.put_nowait(event_dict)
+        except Exception:
+            pass
+
 
 class CeoEventPayload(BaseModel):
     event_type: str = Field(..., description="e.g. PURCHASE_REQUEST_CREATED, PURCHASE_APPROVED, TASK_COMPLETED")
@@ -31,6 +47,77 @@ class CeoEventPayload(BaseModel):
 class CeoActionPayload(BaseModel):
     action: str = Field(..., description="APPROVE, REJECT, CANCEL")
     note: Optional[str] = None
+
+
+@router.get("/events/stream")
+async def stream_ceo_events():
+    """
+    Real-time Server-Sent Events (SSE) stream for instant updates without client polling.
+    """
+    queue: asyncio.Queue = asyncio.Queue(maxsize=100)
+    _event_listeners.add(queue)
+
+    async def event_generator():
+        try:
+            # Initial connection handshake
+            init_msg = json.dumps({"status": "connected", "timestamp": datetime.now(timezone.utc).isoformat()})
+            yield f"event: connected\ndata: {init_msg}\n\n"
+            while True:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=20.0)
+                    yield f"event: message\ndata: {json.dumps(event)}\n\n"
+                except asyncio.TimeoutError:
+                    # Keep connection alive through proxies/browsers
+                    yield ": keep-alive\n\n"
+        except asyncio.CancelledError:
+            pass
+        finally:
+            _event_listeners.discard(queue)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+_last_known_pending_hash: Optional[str] = None
+
+
+async def poll_and_sync_admin_approvals():
+    """
+    Background worker loop that synchronizes pending purchase requests from Admin Portal,
+    creates notifications for new approvals, and broadcasts updates over SSE.
+    """
+    global _last_known_pending_hash
+    while True:
+        try:
+            reqs = await get_pending_purchase_requests()
+            import hashlib
+            fingerprint = hashlib.md5(
+                json.dumps([(r.get("id"), r.get("status"), r.get("amount")) for r in reqs], sort_keys=True).encode()
+            ).hexdigest()
+
+            if _last_known_pending_hash is not None and fingerprint != _last_known_pending_hash:
+                from services.notification_service import sync_approval_notifications
+                await sync_approval_notifications(reqs)
+                await broadcast_event({
+                    "event_type": "PURCHASE_REQUESTS_UPDATED",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "count": len(reqs),
+                })
+            elif _last_known_pending_hash is None and reqs:
+                from services.notification_service import sync_approval_notifications
+                await sync_approval_notifications(reqs)
+
+            _last_known_pending_hash = fingerprint
+        except Exception as exc:
+            logger.debug(f"Admin approval background sync note: {exc}")
+        await asyncio.sleep(4.0)
 
 
 @router.get("/portals-status")
@@ -46,7 +133,25 @@ async def list_pending_approvals():
     """
     Fetches purchase requests from the Admin Portal that are pending executive decision.
     """
-    return await get_pending_purchase_requests()
+    reqs = await get_pending_purchase_requests()
+    try:
+        from services.notification_service import sync_approval_notifications
+        asyncio.create_task(sync_approval_notifications(reqs))
+    except Exception as exc:
+        logger.warning(f"Failed to sync notifications on list approvals: {exc}")
+    return reqs
+
+
+@router.get("/approvals/{request_id}")
+async def get_approval_request_detail(request_id: str):
+    """
+    Fetches full request details including product info, line items, and quote attachments from Admin Portal.
+    """
+    from services.admin_integration_service import get_purchase_request_detail
+    detail = await get_purchase_request_detail(request_id)
+    if not detail:
+        raise HTTPException(status_code=404, detail="Purchase request not found")
+    return detail
 
 
 @router.post("/approvals/{request_id}/action")
@@ -106,6 +211,15 @@ async def execute_approval_action(
     except Exception as exc:
         logger.warning(f"Failed to record CEO event: {exc}")
 
+    # Broadcast event to all SSE clients instantly
+    await broadcast_event({
+        "event_type": f"PURCHASE_{action_type}D",
+        "entity_id": request_id,
+        "source": "ceo-dashboard",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "data": {"note": payload.note, "actor": "CEO Executive"},
+    })
+
     return res
 
 
@@ -159,6 +273,16 @@ async def publish_event(payload: CeoEventPayload):
                 payload.entity_id,
                 json.dumps(payload.data),
             )
+
+        # Broadcast event to all SSE clients instantly
+        await broadcast_event({
+            "event_type": payload.event_type,
+            "source": payload.source,
+            "entity_id": payload.entity_id,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "data": payload.data,
+        })
+
         return {"status": "received", "event_type": payload.event_type, "entity_id": payload.entity_id}
     except Exception as exc:
         logger.exception("Failed to ingest event")

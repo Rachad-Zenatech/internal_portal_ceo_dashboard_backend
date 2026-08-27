@@ -18,26 +18,33 @@ async def create_pool():
     global _pool
     if _pool is None:
         logger.info("Initializing PostgreSQL connection pool", extra={"event": "database_pool_initializing"})
+        use_ssl = "require" if os.getenv("DATABASE_SSL", "false").lower() in ("true", "require", "1") else None
         retries = 5
         for attempt in range(retries):
             try:
                 _pool = await asyncpg.create_pool(
                     dsn=os.environ["DATABASE_URL"],
-                    ssl="require",
-                    min_size=1,
-                    max_size=5,
-                    command_timeout=120,
+                    ssl=use_ssl,
+                    min_size=2,
+                    max_size=20,
+                    command_timeout=60,
                     max_inactive_connection_lifetime=30,
+                    statement_cache_size=0,
                 )
                 break
-            except Exception as e:
-                if "EMAXCONNSESSION" in str(e) and attempt < retries - 1:
+            except (ConnectionResetError, asyncpg.PostgresConnectionError, asyncpg.CannotConnectNowError, OSError, Exception) as e:
+                if attempt < retries - 1:
+                    wait_time = 2 * (attempt + 1)
                     logger.warning(
-                        "Database connection limit reached; retrying",
-                        extra={"event": "database_pool_retry"},
+                        f"Database connection attempt {attempt + 1}/{retries} failed ({type(e).__name__}: {e}); retrying in {wait_time}s...",
+                        extra={"event": "database_pool_retry", "attempt": attempt + 1, "error": str(e)},
                     )
-                    await asyncio.sleep(5)
+                    await asyncio.sleep(wait_time)
                 else:
+                    logger.error(
+                        f"Failed to initialize database connection pool after {retries} attempts: {e}",
+                        extra={"event": "database_pool_init_failed"},
+                    )
                     raise
     return _pool
 
@@ -47,26 +54,33 @@ async def create_admin_pool():
     admin_dsn = os.environ.get("ADMIN_DATABASE_URL") or os.environ.get("ADMIN_PORTAL_DATABASE") or os.environ.get("ADMIN_PORTAL_DATABASE_URL")
     if _admin_pool is None and admin_dsn:
         logger.info("Initializing Admin PostgreSQL connection pool", extra={"event": "admin_database_pool_initializing"})
+        use_ssl = "require" if os.getenv("DATABASE_SSL", "false").lower() in ("true", "require", "1") else None
         retries = 5
         for attempt in range(retries):
             try:
                 _admin_pool = await asyncpg.create_pool(
                     dsn=admin_dsn,
-                    ssl="require",
+                    ssl=use_ssl,
                     min_size=1,
                     max_size=5,
                     command_timeout=120,
                     max_inactive_connection_lifetime=30,
+                    statement_cache_size=0,
                 )
                 break
-            except Exception as e:
-                if "EMAXCONNSESSION" in str(e) and attempt < retries - 1:
+            except (ConnectionResetError, asyncpg.PostgresConnectionError, asyncpg.CannotConnectNowError, OSError, Exception) as e:
+                if attempt < retries - 1:
+                    wait_time = 2 * (attempt + 1)
                     logger.warning(
-                        "Admin Database connection limit reached; retrying",
-                        extra={"event": "admin_database_pool_retry"},
+                        f"Admin database connection attempt {attempt + 1}/{retries} failed ({type(e).__name__}: {e}); retrying in {wait_time}s...",
+                        extra={"event": "admin_database_pool_retry", "attempt": attempt + 1, "error": str(e)},
                     )
-                    await asyncio.sleep(5)
+                    await asyncio.sleep(wait_time)
                 else:
+                    logger.error(
+                        f"Failed to initialize Admin database connection pool after {retries} attempts: {e}",
+                        extra={"event": "admin_database_pool_init_failed"},
+                    )
                     raise
     return _admin_pool
 

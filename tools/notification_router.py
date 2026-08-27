@@ -4,7 +4,7 @@ from uuid import UUID
 from models.notification_model import NotificationResponse, NotificationCreate
 from services.notification_service import (
     get_recent_notifications, get_unread_count, mark_notification_as_read, 
-    mark_all_notifications_as_read, clear_read_notifications, create_notification
+    mark_all_notifications_as_read, clear_read_notifications, clear_all_notifications, create_notification
 )
 from services.auth_service import get_current_user_id_dependency
 
@@ -40,4 +40,9 @@ async def api_mark_all_read(user_id: UUID = Depends(get_current_user_id_dependen
 @notification_router.delete("/notifications/read")
 async def api_clear_read(user_id: UUID = Depends(get_current_user_id_dependency)):
     await clear_read_notifications(user_id)
+    return {"success": True}
+
+@notification_router.delete("/notifications/all")
+async def api_clear_all(user_id: UUID = Depends(get_current_user_id_dependency)):
+    await clear_all_notifications(user_id)
     return {"success": True}
