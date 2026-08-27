@@ -141,13 +141,11 @@ async def fetch_all_admin(sql: str, *args):
  
 async def execute(sql: str, *args):
     async with get_conn() as conn:
-        row = await conn.fetchrow(sql, *args)
-        return dict(row) if row else None
+        return await conn.execute(sql, *args)
 
 async def execute_admin(sql: str, *args):
     async with get_admin_conn() as conn:
-        row = await conn.fetchrow(sql, *args)
-        return dict(row) if row else None
+        return await conn.execute(sql, *args)
  
 async def execute_many(sql: str, args_list: list):
     async with get_conn() as conn:

@@ -226,7 +226,8 @@ async def upsertMicrosoftUser(claims: dict):
                     sso_enabled = true,
                     last_login_at = now(),
                     last_sso_login_at = now(),
-                    last_activity_at = now()
+                    last_activity_at = now(),
+                    last_logout_at = NULL
                 WHERE id = $5
             """, claims['email'], claims['name'], claims['tid'], claims['sub'], user['id'])
             user = await conn.fetchrow("SELECT * FROM users WHERE id = $1", user['id'])
@@ -242,7 +243,8 @@ async def upsertMicrosoftUser(claims: dict):
                         sso_enabled = true,
                         last_login_at = now(),
                         last_sso_login_at = now(),
-                        last_activity_at = now()
+                        last_activity_at = now(),
+                        last_logout_at = NULL
                     WHERE id = $4
                 """, claims['oid'], claims['tid'], claims['sub'], user['id'])
                 user = await conn.fetchrow("SELECT * FROM users WHERE id = $1", user['id'])
@@ -251,8 +253,8 @@ async def upsertMicrosoftUser(claims: dict):
                     INSERT INTO users (
                         microsoft_object_id, microsoft_tenant_id, microsoft_subject_id,
                         email, full_name, auth_provider, sso_enabled, is_active, is_super_admin,
-                        last_login_at, last_sso_login_at, last_activity_at, created_at
-                    ) VALUES ($1, $2, $3, $4, $5, 'microsoft', true, false, false, now(), now(), now(), now())
+                        last_login_at, last_sso_login_at, last_activity_at, last_logout_at, created_at
+                    ) VALUES ($1, $2, $3, $4, $5, 'microsoft', true, false, false, now(), now(), now(), NULL, now())
                     RETURNING *
                 """, claims['oid'], claims['tid'], claims['sub'], claims['email'], claims['name'])
                 
@@ -328,17 +330,20 @@ async def get_current_user_id_dependency(
         raise HTTPException(status_code=401, detail="User is inactive or no longer exists")
         
     now_dt = datetime.datetime.now(datetime.timezone.utc)
+    token_iat = datetime.datetime.fromtimestamp(payload['iat'], tz=datetime.timezone.utc)
     
     if user.get("last_logout_at"):
-        token_iat = datetime.datetime.fromtimestamp(payload['iat'], tz=datetime.timezone.utc)
         if token_iat < user["last_logout_at"]:
             raise HTTPException(status_code=401, detail="Session expired")
 
     if user.get("last_activity_at"):
-        if now_dt - user["last_activity_at"] > datetime.timedelta(minutes=30):
+        if token_iat <= user["last_activity_at"] and (now_dt - user["last_activity_at"] > datetime.timedelta(minutes=30)):
             from postgresql_db.database import execute
             await execute("UPDATE users SET last_logout_at = now() WHERE id = $1", user_id)
             raise HTTPException(status_code=401, detail="Logged out due to inactivity")
+
+    from postgresql_db.database import execute
+    await execute("UPDATE users SET last_activity_at = now() WHERE id = $1", user_id)
 
     return user_id
 

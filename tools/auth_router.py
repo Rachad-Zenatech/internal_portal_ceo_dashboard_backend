@@ -19,16 +19,16 @@ from services.auth_service import (
 )
 from tools.rbac_router import get_current_user_id
 from services.rbac_service import log_login_activity
-from postgresql_db.database import get_pool
+from postgresql_db.database import get_pool, fetch_one, fetch_all
 from uuid import UUID
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # Try to load from environment
-MICROSOFT_CLIENT_ID = os.getenv("MICROSOFT_CLIENT_ID", "")
-MICROSOFT_CLIENT_SECRET = os.getenv("MICROSOFT_CLIENT_SECRET", "")
-MICROSOFT_TENANT_ID = os.getenv("MICROSOFT_TENANT_ID", "common")
+MICROSOFT_CLIENT_ID = os.getenv("MICROSOFT_CLIENT_ID") or os.getenv("AZURE_CLIENT_ID", "")
+MICROSOFT_CLIENT_SECRET = os.getenv("MICROSOFT_CLIENT_SECRET") or os.getenv("AZURE_CLIENT_SECRET", "")
+MICROSOFT_TENANT_ID = os.getenv("MICROSOFT_TENANT_ID") or os.getenv("AZURE_TENANT_ID", "common")
 
 config_dict = {
     "MICROSOFT_CLIENT_ID": MICROSOFT_CLIENT_ID,
@@ -54,8 +54,16 @@ except Exception:
     )
 
 @router.get("/auth/microsoft/login")
-async def microsoft_login(request: Request):
-    redirect_uri = os.getenv("MICROSOFT_REDIRECT_URI")
+async def microsoft_login(request: Request, redirect_to: Optional[str] = None):
+    redirect_uri = os.getenv("MICROSOFT_REDIRECT_URI") or os.getenv("AZURE_REDIRECT_URI")
+    # Preserve originating frontend URL if supplied or available from referer
+    originating_url = redirect_to or request.headers.get("referer")
+    if originating_url:
+        from urllib.parse import urlparse
+        parsed = urlparse(originating_url)
+        if parsed.scheme and parsed.netloc:
+            request.session["post_login_frontend_url"] = f"{parsed.scheme}://{parsed.netloc}"
+
     return await oauth.microsoft.authorize_redirect(request, redirect_uri, prompt="select_account")
 
 @router.get("/auth/microsoft/callback")
@@ -89,7 +97,8 @@ async def microsoft_callback(request: Request):
     # Connect Microsoft Entra identity to local RBAC
     user = await upsertMicrosoftUser(claims)
     
-    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5175")
+    saved_frontend_url = request.session.pop("post_login_frontend_url", None)
+    frontend_url = (saved_frontend_url or os.getenv("FRONTEND_URL", "http://localhost:5175")).rstrip("/")
     
     if not user.get("is_active"):
         await log_login_activity(claims['email'], user["id"], False, "Account pending/inactive", ip_address, user_agent)
@@ -128,7 +137,7 @@ async def developer_login(req: DeveloperLoginRequest, request: Request, response
         raise HTTPException(status_code=403, detail="Account pending or inactive")
 
     async with pool.acquire() as conn:
-        await conn.execute("UPDATE users SET last_login_at = now() WHERE id = $1", user["id"])
+        await conn.execute("UPDATE users SET last_login_at = now(), last_activity_at = now(), last_logout_at = NULL WHERE id = $1", user["id"])
 
     await log_login_activity(email, user["id"], True, "Developer bypass login", ip_address, user_agent)
     
@@ -138,45 +147,39 @@ async def developer_login(req: DeveloperLoginRequest, request: Request, response
 
 @router.get("/auth/bootstrap")
 async def get_auth_bootstrap(user_id: UUID = Depends(get_current_user_id_dependency)):
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        user = await conn.fetchrow("SELECT id, email, full_name, is_active, is_super_admin, auth_provider FROM users WHERE id = $1", user_id)
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-        
-        user_dict = {
-            "id": str(user["id"]),
-            "email": user["email"],
-            "fullName": user["full_name"],
-            "isActive": user["is_active"],
-            "isSuperAdmin": user["is_super_admin"],
-            "authProvider": user["auth_provider"]
-        }
-        
-        roles = await getUserRoles(user_id)
-        role_ids = [r["id"] for r in roles]
-        
-        navigation = await getUserNavigationPermissions(role_ids) if not user["is_super_admin"] else await get_all_navigation_items()
-        tools = await getUserToolPermissions(role_ids) if not user["is_super_admin"] else await get_all_mcp_tools()
-        
-        return {
-            "user": user_dict,
-            "roles": roles,
-            "navigation": navigation,
-            "tools": tools
-        }
+    user = await fetch_one("SELECT id, email, full_name, is_active, is_super_admin, auth_provider FROM users WHERE id = $1", user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    user_dict = {
+        "id": str(user["id"]),
+        "email": user["email"],
+        "fullName": user["full_name"],
+        "isActive": user["is_active"],
+        "isSuperAdmin": user["is_super_admin"],
+        "authProvider": user["auth_provider"]
+    }
+    
+    roles = await getUserRoles(user_id)
+    role_ids = [r["id"] for r in roles]
+    
+    navigation = await getUserNavigationPermissions(role_ids) if not user["is_super_admin"] else await get_all_navigation_items()
+    tools = await getUserToolPermissions(role_ids) if not user["is_super_admin"] else await get_all_mcp_tools()
+    
+    return {
+        "user": user_dict,
+        "roles": roles,
+        "navigation": navigation,
+        "tools": tools
+    }
 
 async def get_all_navigation_items():
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        items = await conn.fetch("SELECT id, code, name, route_path as \"routePath\", parent_code as \"parentCode\", display_order as \"displayOrder\", icon FROM navigation_items WHERE is_active = true ORDER BY display_order")
-        return [dict(i) for i in items]
+    items = await fetch_all("SELECT id, code, name, route_path as \"routePath\", parent_code as \"parentCode\", display_order as \"displayOrder\", icon FROM navigation_items WHERE is_active = true ORDER BY display_order")
+    return [dict(i) for i in items]
 
 async def get_all_mcp_tools():
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        tools = await conn.fetch("SELECT id, code, name, 'execute' as \"accessLevel\", '{}'::jsonb as conditions FROM mcp_tools WHERE is_active = true")
-        return [dict(t) for t in tools]
+    tools = await fetch_all("SELECT id, code, name, 'execute' as \"accessLevel\", '{}'::jsonb as conditions FROM mcp_tools WHERE is_active = true")
+    return [dict(t) for t in tools]
 
 @router.post("/auth/heartbeat")
 async def heartbeat(
