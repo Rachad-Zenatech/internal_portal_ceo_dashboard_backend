@@ -86,14 +86,20 @@ async def stream_ceo_events():
 
 
 _last_known_pending_hash: Optional[str] = None
+_last_known_ma_loi_hash: Optional[str] = None
 
 
 async def poll_and_sync_admin_approvals():
     """
-    Background worker loop that synchronizes pending purchase requests from Admin Portal,
-    creates notifications for new approvals, and broadcasts updates over SSE.
+    Background worker loop that synchronizes pending purchase requests from Admin Portal
+    and accepted LOI deal events from the M&A Microservice, creates notifications,
+    and broadcasts updates over SSE.
     """
-    global _last_known_pending_hash
+    global _last_known_pending_hash, _last_known_ma_loi_hash
+    await asyncio.sleep(2.0)
+    from services.admin_integration_service import get_ma_pipeline_tasks
+    from services.notification_service import sync_approval_notifications, sync_ma_loi_accepted_notifications
+
     while True:
         try:
             reqs = await get_pending_purchase_requests()
@@ -103,7 +109,6 @@ async def poll_and_sync_admin_approvals():
             ).hexdigest()
 
             if _last_known_pending_hash is not None and fingerprint != _last_known_pending_hash:
-                from services.notification_service import sync_approval_notifications
                 await sync_approval_notifications(reqs)
                 await broadcast_event({
                     "event_type": "PURCHASE_REQUESTS_UPDATED",
@@ -111,13 +116,44 @@ async def poll_and_sync_admin_approvals():
                     "count": len(reqs),
                 })
             elif _last_known_pending_hash is None and reqs:
-                from services.notification_service import sync_approval_notifications
                 await sync_approval_notifications(reqs)
 
             _last_known_pending_hash = fingerprint
         except Exception as exc:
             logger.debug(f"Admin approval background sync note: {exc}")
+
+        # Sync M&A LOI Accepted deals
+        try:
+            ma_tasks = await get_ma_pipeline_tasks(limit=100, skip=0)
+            accepted_loi_tasks = [
+                t for t in ma_tasks
+                if (t.get("priority_name") or "").lower() in ["loi sent - accepted", "loi accepted"]
+            ]
+            import hashlib
+            ma_fingerprint = hashlib.md5(
+                json.dumps([(t.get("id"), t.get("company_name"), t.get("priority_name")) for t in accepted_loi_tasks], sort_keys=True).encode()
+            ).hexdigest()
+
+            if _last_known_ma_loi_hash is not None and ma_fingerprint != _last_known_ma_loi_hash:
+                newly_synced = await sync_ma_loi_accepted_notifications(accepted_loi_tasks)
+                for t in accepted_loi_tasks:
+                    await broadcast_event({
+                        "event_type": "M&A_LOI_ACCEPTED",
+                        "source": "m7a",
+                        "entity_id": f"DEAL-{t.get('id')}",
+                        "title": f"🎉 LOI Accepted: {t.get('company_name')}",
+                        "data": t,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    })
+            elif _last_known_ma_loi_hash is None and accepted_loi_tasks:
+                await sync_ma_loi_accepted_notifications(accepted_loi_tasks)
+
+            _last_known_ma_loi_hash = ma_fingerprint
+        except Exception as exc:
+            logger.debug(f"M&A LOI background sync note: {exc}")
+
         await asyncio.sleep(4.0)
+
 
 
 @router.get("/portals-status")
@@ -330,3 +366,34 @@ async def get_cross_portal_tasks():
     Fetches cross-organization tasks from Admin Portal.
     """
     return await get_admin_tasks()
+
+
+@router.get("/ma/summary")
+async def get_ma_summary_endpoint():
+    """
+    Fetches live aggregated metrics and KPI statistics from the M&A Acquisitions Tracking system.
+    """
+    from services.admin_integration_service import get_ma_pipeline_summary
+    return await get_ma_pipeline_summary()
+
+
+@router.get("/ma/events")
+async def get_ma_events_endpoint(limit: int = Query(50, ge=1, le=200)):
+    """
+    Fetches transformed M&A deal activities, stage changes, and pipeline updates.
+    """
+    from services.admin_integration_service import get_ma_events
+    return await get_ma_events(limit=limit)
+
+
+@router.get("/ma/pipeline")
+async def get_ma_pipeline_endpoint(
+    limit: int = Query(50, ge=1, le=200),
+    skip: int = Query(0, ge=0),
+    loi_accepted_only: bool = Query(False),
+):
+    """
+    Fetches active M&A pipeline deal records with pagination and optional LOI Accepted filtering.
+    """
+    from services.admin_integration_service import get_ma_pipeline_tasks
+    return await get_ma_pipeline_tasks(limit=limit, skip=skip, loi_accepted_only=loi_accepted_only)

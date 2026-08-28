@@ -90,13 +90,19 @@ async def lifespan(app: FastAPI):
     sync_task.add_done_callback(
         partial(log_background_task_result, task_name="mcp-tool-sync")
     )
+    from tools.ceo_integration_router import poll_and_sync_admin_approvals
+    sync_approvals_task = asyncio.create_task(poll_and_sync_admin_approvals(), name="approval-and-ma-sync")
+    sync_approvals_task.add_done_callback(
+        partial(log_background_task_result, task_name="approval-and-ma-sync")
+    )
     logger.info("Application startup complete", extra={"event": "application_started"})
     try:
         yield
     finally:
         logger.info("Application shutdown beginning", extra={"event": "application_stopping"})
         sync_task.cancel()
-        await asyncio.gather(sync_task, return_exceptions=True)
+        sync_approvals_task.cancel()
+        await asyncio.gather(sync_task, sync_approvals_task, return_exceptions=True)
         await close_pool()
         await close_admin_pool()
         loop.set_exception_handler(previous_exception_handler)
@@ -335,6 +341,7 @@ else:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.\d+\.\d+\.\d+)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
@@ -344,6 +351,6 @@ app.add_middleware(
 if __name__ == "__main__":
     mcp.run(
         transport="streamable-http",
-        host=os.getenv("MCP_HOST", "127.0.0.1"),
+        host=os.getenv("MCP_HOST", "0.0.0.0"),
         port=int(os.getenv("MCP_PORT", "8005")),
     )

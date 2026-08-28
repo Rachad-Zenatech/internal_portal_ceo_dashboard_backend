@@ -4,4 +4,4 @@ MCP inspector: npx @modelcontextprotocol/inspector
 
 MCP Server: python server.py
 
-API Server: uvicorn server:app --reload --port 8005
+API Server: uvicorn server:app --reload --host 0.0.0.0 --port 8005

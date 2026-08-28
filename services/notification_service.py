@@ -128,3 +128,72 @@ async def sync_approval_notifications(pending_requests: List[dict]) -> int:
         print(f"Error syncing approval notifications: {exc}")
         return 0
 
+
+async def sync_ma_loi_accepted_notifications(tasks: List[dict]) -> int:
+    """
+    Ensures unread executive notifications exist for all deals where an LOI was accepted.
+    """
+    if not tasks:
+        return 0
+
+    accepted_tasks = [
+        t for t in tasks
+        if (t.get("priority_name") or "").lower() in ["loi sent - accepted", "loi accepted"]
+    ]
+    if not accepted_tasks:
+        return 0
+
+    try:
+        from postgresql_db.database import get_conn
+        async with get_conn() as conn:
+            users = await conn.fetch("SELECT id FROM users WHERE is_active = true AND deleted_at IS NULL")
+            if not users:
+                return 0
+
+            existing_rows = await conn.fetch(
+                "SELECT user_id, entity_id FROM notifications WHERE entity_type = 'ma_loi_accepted'"
+            )
+            existing_set = {(str(r["user_id"]), str(r["entity_id"])) for r in existing_rows}
+
+            to_insert = []
+            for t in accepted_tasks:
+                task_id = str(t.get("id") or "")
+                if not task_id:
+                    continue
+
+                company_name = t.get("company_name") or "Unknown Target"
+                analyst = t.get("analyst_name") or t.get("analyst_email") or "Analyst"
+                rev_raw = str(t.get("revenue") or "").strip()
+                rev_str = f" (${rev_raw})" if rev_raw else ""
+
+                title = f"🎉 LOI Accepted: {company_name}{rev_str}"
+                msg = f"{company_name} accepted the acquisition LOI offer. Handled by {analyst}."
+
+                for u in users:
+                    user_id_str = str(u["id"])
+                    if (user_id_str, task_id) not in existing_set:
+                        existing_set.add((user_id_str, task_id))
+                        to_insert.append((
+                            user_id_str,
+                            'ma_loi_accepted',
+                            title,
+                            msg,
+                            '/mergers-acquisitions',
+                            'ma_loi_accepted',
+                            task_id,
+                            False,
+                        ))
+
+            if to_insert:
+                await conn.executemany(
+                    """
+                    INSERT INTO notifications (user_id, type, title, message, link_url, entity_type, entity_id, is_read, created_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+                    """,
+                    to_insert,
+                )
+            return len(to_insert)
+    except Exception as exc:
+        print(f"Error syncing LOI accepted notifications: {exc}")
+        return 0
+
