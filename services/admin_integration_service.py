@@ -144,7 +144,7 @@ async def check_portals_health() -> List[Dict[str, Any]]:
         t0 = time.time()
         try:
             resp = await client.get(portal["url"])
-            latency_ms = round((time.time() - t0) * 1000)
+            latency_ms = max(1, round((time.time() - t0) * 1000))
             is_healthy = resp.status_code in [200, 201, 304, 401, 404]
             return {
                 "name": portal["name"],
@@ -156,7 +156,7 @@ async def check_portals_health() -> List[Dict[str, Any]]:
                 "latency_ms": latency_ms,
             }
         except Exception as exc:
-            latency_ms = round((time.time() - t0) * 1000)
+            latency_ms = max(1, round((time.time() - t0) * 1000))
             return {
                 "name": portal["name"],
                 "code": portal["code"],
@@ -168,7 +168,8 @@ async def check_portals_health() -> List[Dict[str, Any]]:
                 "error": str(exc),
             }
 
-    async with httpx.AsyncClient(timeout=2.0) as client:
+    # Ultra-fast 0.6s timeout so offline services never block the backend or event loop
+    async with httpx.AsyncClient(timeout=0.6) as client:
         return await asyncio.gather(*[_check_single(p, client) for p in portals])
 
 

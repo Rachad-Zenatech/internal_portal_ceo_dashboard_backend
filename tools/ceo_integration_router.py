@@ -91,8 +91,7 @@ _last_known_pending_hash: Optional[str] = None
 
 async def poll_and_sync_admin_approvals():
     """
-    Background worker loop that synchronizes pending purchase requests from Admin Portal,
-    creates notifications for new approvals, and broadcasts updates over SSE.
+    Background worker loop that synchronizes pending purchase requests only on actual state change.
     """
     global _last_known_pending_hash
     while True:
@@ -118,7 +117,7 @@ async def poll_and_sync_admin_approvals():
             _last_known_pending_hash = fingerprint
         except Exception as exc:
             logger.debug(f"Admin approval background sync note: {exc}")
-        await asyncio.sleep(4.0)
+        await asyncio.sleep(8.0)
 
 
 @router.get("/portals-status")
