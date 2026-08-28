@@ -1,5 +1,6 @@
 import os
 import time
+import json
 import asyncio
 import logging
 from typing import List, Dict, Any, Optional
@@ -10,6 +11,12 @@ import jwt
 import httpx
 
 from postgresql_db.database import get_conn
+from services.integration_resilience import (
+    admin_circuit_breaker,
+    ma_circuit_breaker,
+    execute_resilient_call,
+    resilient_cache,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +24,7 @@ ADMIN_API_BASE = os.getenv("ADMIN_PORTAL_API_URL", os.getenv("ADMIN_API_BASE", "
 CEO_DATA_API_URL = os.getenv("CEO_DATA_API_URL", os.getenv("INTERNAL_API_URL", "http://127.0.0.1:8005"))
 MA_API_BASE = os.getenv("MA_PORTAL_API_URL", "http://127.0.0.1:8000")
 TIMEOUT_SECONDS = float(os.getenv("INTEGRATION_TIMEOUT_SECONDS", "5.0"))
+HARD_TIMEOUT_SECONDS = float(os.getenv("HARD_TIMEOUT_SECONDS", "30.0"))
 
 JWT_SECRET = os.environ.get("JWT_SECRET") or os.environ.get("SESSION_SECRET") or "OU2YW8HGoJJMb7+aAVjoxRXah2gSUtvPLPlzK8G6j9c="
 JWT_ALGORITHM = "HS256"
@@ -47,6 +55,71 @@ def _extract_port(url_str: str) -> int:
         return 443 if parsed.scheme == "https" else 80
     except Exception:
         return 80
+
+
+def _parse_purchase_request_item(r: Dict[str, Any]) -> Dict[str, Any]:
+    raw_status = str(r.get("status") or "")
+    desc = r.get("description") or r.get("product_name") or r.get("title") or f"Purchase Request #{r.get('id')}"
+    product_name_val = r.get("product_name") or r.get("item_name") or r.get("item") or r.get("title") or desc
+
+    product_info_val = r.get("product_info")
+    if isinstance(product_info_val, str):
+        try:
+            product_info_val = json.loads(product_info_val)
+        except Exception:
+            pass
+
+    items_val = r.get("items")
+    if isinstance(items_val, str):
+        try:
+            items_val = json.loads(items_val)
+        except Exception:
+            items_val = []
+
+    quote_data_val = r.get("quote_data")
+    if isinstance(quote_data_val, str):
+        try:
+            quote_data_val = json.loads(quote_data_val)
+        except Exception:
+            pass
+
+    amount_val = float(r.get("amount") or 0)
+    qty_val = int(r.get("quantity")) if r.get("quantity") is not None else 1
+    raw_unit_price = r.get("unit_price")
+    if raw_unit_price is not None and float(raw_unit_price) > 0:
+        unit_price_val = float(raw_unit_price)
+    else:
+        unit_price_val = (amount_val / qty_val) if qty_val > 0 else amount_val
+
+    vendor_val = r.get("preferred_vendor") or r.get("vendor")
+    if not vendor_val and isinstance(product_info_val, dict):
+        vendor_val = product_info_val.get("vendor") or product_info_val.get("preferred_vendor")
+
+    return {
+        "id": str(r.get("id")),
+        "department": r.get("department") or "Operations",
+        "amount": amount_val,
+        "status": raw_status,
+        "description": desc,
+        "product_name": product_name_val,
+        "priority": r.get("priority") or "Normal",
+        "requester_name": r.get("requester") or r.get("requester_name") or "Staff",
+        "created_at": str(r.get("created_at") or r.get("request_date") or ""),
+        "gl_code": r.get("gl_code"),
+        "currency": r.get("currency") or "USD",
+        "item_url": r.get("item_url"),
+        "product_info": product_info_val,
+        "vendor": vendor_val,
+        "items": items_val or [],
+        "item_mode": r.get("item_mode") or ("MULTIPLE" if items_val and len(items_val) > 0 else "SINGLE"),
+        "quantity": qty_val,
+        "unit_price": unit_price_val,
+        "quote_data": quote_data_val,
+        "request_type": r.get("request_type") or "SPEND",
+        "assigned_user": r.get("assigned_user"),
+        "hold_reason": r.get("hold_reason"),
+        "attachments": r.get("attachments") or [],
+    }
 
 
 async def check_portals_health() -> List[Dict[str, Any]]:
@@ -95,90 +168,77 @@ async def check_portals_health() -> List[Dict[str, Any]]:
                 "error": str(exc),
             }
 
-    async with httpx.AsyncClient(timeout=1.0) as client:
+    async with httpx.AsyncClient(timeout=2.0) as client:
         return await asyncio.gather(*[_check_single(p, client) for p in portals])
+
+
+async def _fetch_admin_raw_requests(user_id: Optional[UUID] = None) -> List[Dict[str, Any]]:
+    token = await _generate_service_token(user_id)
+    headers = {"Authorization": f"Bearer {token}"}
+    url = f"{ADMIN_API_BASE}/api/purchasing/requests"
+    async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
+        resp = await client.get(url, headers=headers)
+        if resp.status_code == 200:
+            data = resp.json()
+            if isinstance(data, list):
+                return data
+    return []
 
 
 async def get_pending_purchase_requests(user_id: Optional[UUID] = None) -> List[Dict[str, Any]]:
     """
-    Fetches real pending purchasing requests from the Administration Portal HTTP API.
+    Fetches real pending purchasing requests protected by circuit breaker and resilient cache.
     """
-    token = await _generate_service_token(user_id)
-    headers = {"Authorization": f"Bearer {token}"}
-    url = f"{ADMIN_API_BASE}/api/purchasing/requests"
+    async def _fetch():
+        raw_list = await _fetch_admin_raw_requests(user_id)
+        pending = []
+        for r in raw_list:
+            raw_status = str(r.get("status") or "")
+            st_norm = raw_status.upper().replace(" ", "_")
+            if st_norm in ["WAITING_APPROVAL", "UNDER_REVIEW", "PENDING", "PENDING_APPROVAL"]:
+                pending.append(_parse_purchase_request_item(r))
+        return pending
 
-    try:
-        async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
-            resp = await client.get(url, headers=headers)
-            if resp.status_code == 200:
-                data = resp.json()
-                if isinstance(data, list):
-                    pending = []
-                    for r in data:
-                        raw_status = str(r.get("status") or "")
-                        st_norm = raw_status.upper().replace(" ", "_")
-                        desc = r.get("product_name") or r.get("title") or r.get("description") or f"Purchase Request #{r.get('id')}"
-                        product_info_val = r.get("product_info")
-                        if isinstance(product_info_val, str):
-                            try:
-                                product_info_val = json.loads(product_info_val)
-                            except Exception:
-                                pass
+    resilient_resp = await execute_resilient_call(
+        circuit=admin_circuit_breaker,
+        cache_key="admin_pending_requests",
+        fetch_fn=_fetch,
+        timeout_seconds=TIMEOUT_SECONDS,
+    )
+    return resilient_resp.get("data") or []
 
-                        items_val = r.get("items")
-                        if isinstance(items_val, str):
-                            try:
-                                items_val = json.loads(items_val)
-                            except Exception:
-                                items_val = []
 
-                        quote_data_val = r.get("quote_data")
-                        if isinstance(quote_data_val, str):
-                            try:
-                                quote_data_val = json.loads(quote_data_val)
-                            except Exception:
-                                pass
+async def get_completed_purchase_requests(user_id: Optional[UUID] = None) -> List[Dict[str, Any]]:
+    """
+    Fetches completed / approved purchasing requests from Admin Portal with resilient cache fallback.
+    """
+    async def _fetch():
+        raw_list = await _fetch_admin_raw_requests(user_id)
+        completed = []
+        for r in raw_list:
+            raw_status = str(r.get("status") or "")
+            st_norm = raw_status.upper().replace(" ", "_")
+            if st_norm in ["COMPLETED", "APPROVED", "PAID", "PO_CREATED"]:
+                completed.append(_parse_purchase_request_item(r))
+        return completed
 
-                        item = {
-                            "id": str(r.get("id")),
-                            "department": r.get("department") or "Operations",
-                            "amount": float(r.get("amount") or 0),
-                            "status": raw_status,
-                            "description": desc,
-                            "priority": r.get("priority") or "Normal",
-                            "requester_name": r.get("requester") or r.get("requester_name") or "Staff",
-                            "created_at": str(r.get("created_at") or r.get("request_date") or ""),
-                            "gl_code": r.get("gl_code"),
-                            "currency": r.get("currency") or "USD",
-                            "item_url": r.get("item_url"),
-                            "product_info": product_info_val,
-                            "items": items_val or [],
-                            "item_mode": r.get("item_mode") or "SINGLE",
-                            "quantity": r.get("quantity"),
-                            "unit_price": r.get("unit_price"),
-                            "quote_data": quote_data_val,
-                            "request_type": r.get("request_type") or "SPEND",
-                            "assigned_user": r.get("assigned_user"),
-                            "hold_reason": r.get("hold_reason"),
-                            "attachments": r.get("attachments") or [],
-                        }
-                        if st_norm == "WAITING_APPROVAL":
-                            pending.append(item)
-                    return pending
-    except Exception as exc:
-        logger.warning(f"Admin API purchasing requests query note: {exc}")
-
-    return []
+    resilient_resp = await execute_resilient_call(
+        circuit=admin_circuit_breaker,
+        cache_key="admin_completed_requests",
+        fetch_fn=_fetch,
+        timeout_seconds=TIMEOUT_SECONDS,
+    )
+    return resilient_resp.get("data") or []
 
 
 async def get_purchase_request_detail(request_id: str) -> Optional[Dict[str, Any]]:
     """
-    Fetches full request details including product info, items, and quote attachments from Admin Portal.
+    Fetches full request details from Admin Portal with timeout protection.
     """
-    token = await _generate_service_token()
-    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
-    url = f"{ADMIN_API_BASE}/api/purchasing/requests/{request_id}"
-    try:
+    async def _fetch():
+        token = await _generate_service_token()
+        headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+        url = f"{ADMIN_API_BASE}/api/purchasing/requests/{request_id}"
         async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
             resp = await client.get(url, headers=headers)
             if resp.status_code == 200:
@@ -196,14 +256,20 @@ async def get_purchase_request_detail(request_id: str) -> Optional[Dict[str, Any
                         except Exception:
                             req_obj["items"] = []
                 return data
-    except Exception as exc:
-        logger.warning(f"Failed to fetch purchase request detail #{request_id}: {exc}")
-    return None
+            return None
+
+    resilient_resp = await execute_resilient_call(
+        circuit=admin_circuit_breaker,
+        cache_key=f"admin_request_detail_{request_id}",
+        fetch_fn=_fetch,
+        timeout_seconds=TIMEOUT_SECONDS,
+    )
+    return resilient_resp.get("data")
 
 
 async def execute_purchase_transition(request_id: str, action: str, note: Optional[str] = None, user_id: Optional[UUID] = None) -> Dict[str, Any]:
     """
-    Executes approval or rejection of a purchase request via the Administration Portal HTTP API.
+    Executes approval or rejection of a purchase request via Administration Portal.
     """
     action_clean = action.upper().strip()
     url = f"{ADMIN_API_BASE}/api/purchasing/requests/{request_id}/transition"
@@ -224,9 +290,10 @@ async def execute_purchase_transition(request_id: str, action: str, note: Option
     }
 
     try:
-        async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
+        async with httpx.AsyncClient(timeout=min(15.0, HARD_TIMEOUT_SECONDS)) as client:
             resp = await client.post(url, json=payload, headers=headers)
             if resp.status_code in [200, 201]:
+                admin_circuit_breaker.record_success()
                 return {"success": True, "data": resp.json()}
             else:
                 try:
@@ -236,21 +303,26 @@ async def execute_purchase_transition(request_id: str, action: str, note: Option
                     detail = resp.text
                 return {"success": False, "error": detail or f"Administration API returned HTTP {resp.status_code}"}
     except Exception as exc:
+        admin_circuit_breaker.record_failure(exc)
         logger.warning(f"Admin API transition forwarding note: {exc}")
-        return {"success": False, "error": f"Failed to connect to Administration API: {exc}"}
+        return {"success": False, "error": f"Administration Portal is currently unavailable: {exc}"}
 
 
 async def get_admin_tasks(user_id: Optional[UUID] = None) -> List[Dict[str, Any]]:
-    url = f"{ADMIN_API_BASE}/api/tasks"
-    token = await _generate_service_token(user_id)
-    headers = {
-        "Authorization": f"Bearer {token}"
-    }
-    try:
+    async def _fetch():
+        url = f"{ADMIN_API_BASE}/api/tasks"
+        token = await _generate_service_token(user_id)
+        headers = {"Authorization": f"Bearer {token}"}
         async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
             resp = await client.get(url, headers=headers)
             if resp.status_code == 200:
                 return resp.json()
-    except Exception as exc:
-        logger.debug(f"Tasks query note: {exc}")
-    return []
+        return []
+
+    resilient_resp = await execute_resilient_call(
+        circuit=admin_circuit_breaker,
+        cache_key="admin_tasks",
+        fetch_fn=_fetch,
+        timeout_seconds=TIMEOUT_SECONDS,
+    )
+    return resilient_resp.get("data") or []

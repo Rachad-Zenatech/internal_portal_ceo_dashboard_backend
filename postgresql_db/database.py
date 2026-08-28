@@ -25,11 +25,13 @@ async def create_pool():
                 _pool = await asyncpg.create_pool(
                     dsn=os.environ["DATABASE_URL"],
                     ssl=use_ssl,
-                    min_size=2,
-                    max_size=20,
-                    command_timeout=60,
-                    max_inactive_connection_lifetime=30,
+                    min_size=1,
+                    max_size=10,
+                    timeout=15.0,
+                    command_timeout=30.0,
+                    max_inactive_connection_lifetime=15.0,
                     statement_cache_size=0,
+                    server_settings={"application_name": "ceo_dashboard"},
                 )
                 break
             except (ConnectionResetError, asyncpg.PostgresConnectionError, asyncpg.CannotConnectNowError, OSError, Exception) as e:
@@ -63,8 +65,9 @@ async def create_admin_pool():
                     ssl=use_ssl,
                     min_size=1,
                     max_size=5,
-                    command_timeout=120,
-                    max_inactive_connection_lifetime=30,
+                    timeout=15.0,
+                    command_timeout=30.0,
+                    max_inactive_connection_lifetime=15.0,
                     statement_cache_size=0,
                 )
                 break
@@ -125,46 +128,29 @@ def get_admin_pool() -> asyncpg.Pool:
 
 @asynccontextmanager
 async def get_conn():
-    async with get_pool().acquire() as conn:
-        yield conn
+    pool = get_pool()
+    try:
+        async with pool.acquire(timeout=10.0) as conn:
+            yield conn
+    except (asyncpg.PostgresConnectionError, ConnectionResetError, TimeoutError, asyncio.TimeoutError) as exc:
+        logger.warning(f"Database connection error ({type(exc).__name__}: {exc}), resetting pool...")
+        new_pool = await reset_pool()
+        async with new_pool.acquire(timeout=10.0) as conn:
+            yield conn
 
-@asynccontextmanager
-async def get_admin_conn():
-    async with get_admin_pool().acquire() as conn:
-        yield conn
 
-async def fetch_one(sql: str, *args):
+async def fetch_all(query: str, *args):
     async with get_conn() as conn:
-        row = await conn.fetchrow(sql, *args)
-        return dict(row) if row else None
+        return await conn.fetch(query, *args)
 
-async def fetch_one_admin(sql: str, *args):
-    async with get_admin_conn() as conn:
-        row = await conn.fetchrow(sql, *args)
-        return dict(row) if row else None
- 
-async def fetch_all(sql: str, *args):
+async def fetch_one(query: str, *args):
     async with get_conn() as conn:
-        rows = await conn.fetch(sql, *args)
-        return [dict(r) for r in rows]
+        return await conn.fetchrow(query, *args)
 
-async def fetch_all_admin(sql: str, *args):
-    async with get_admin_conn() as conn:
-        rows = await conn.fetch(sql, *args)
-        return [dict(r) for r in rows]
- 
-async def execute(sql: str, *args):
+async def fetch_val(query: str, *args):
     async with get_conn() as conn:
-        return await conn.execute(sql, *args)
+        return await conn.fetchval(query, *args)
 
-async def execute_admin(sql: str, *args):
-    async with get_admin_conn() as conn:
-        return await conn.execute(sql, *args)
- 
-async def execute_many(sql: str, args_list: list):
+async def execute(query: str, *args):
     async with get_conn() as conn:
-        await conn.executemany(sql, args_list)
-
-async def execute_many_admin(sql: str, args_list: list):
-    async with get_admin_conn() as conn:
-        await conn.executemany(sql, args_list)
+        return await conn.execute(query, *args)

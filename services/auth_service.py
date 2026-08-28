@@ -206,9 +206,8 @@ def getCurrentUserFromMicrosoftClaims(token_info: dict) -> dict:
     }
 
 async def upsertMicrosoftUser(claims: dict):
-    from postgresql_db.database import get_pool
-    pool = await get_pool()
-    async with pool.acquire() as conn:
+    from postgresql_db.database import get_conn
+    async with get_conn() as conn:
         # 1. Try to find by object_id
         user = await conn.fetchrow("""
             SELECT * FROM users 

@@ -12,6 +12,7 @@ from postgresql_db.database import get_conn, fetch_all, fetch_one, execute
 from services.admin_integration_service import (
     check_portals_health,
     get_pending_purchase_requests,
+    get_completed_purchase_requests,
     execute_purchase_transition,
     get_admin_tasks,
 )
@@ -140,6 +141,14 @@ async def list_pending_approvals():
     except Exception as exc:
         logger.warning(f"Failed to sync notifications on list approvals: {exc}")
     return reqs
+
+
+@router.get("/approvals/history")
+async def list_approved_history(limit: int = 50):
+    """
+    Fetches live completed and approved purchase requests from the Administration Portal.
+    """
+    return await get_completed_purchase_requests()
 
 
 @router.get("/approvals/{request_id}")
