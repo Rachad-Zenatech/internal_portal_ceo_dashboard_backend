@@ -92,69 +92,76 @@ _last_known_ma_loi_hash: Optional[str] = None
 
 async def poll_and_sync_admin_approvals():
     """
-    Background worker loop that synchronizes pending purchase requests from Admin Portal
-    and accepted LOI deal events from the M&A Microservice, creates notifications,
-    and broadcasts updates over SSE.
+    Background worker loop that periodically synchronizes pending purchase requests and M&A deals
+    only when state actually changes, and broadcasts updates over SSE without blocking.
     """
     global _last_known_pending_hash, _last_known_ma_loi_hash
     await asyncio.sleep(2.0)
-    from services.admin_integration_service import get_ma_pipeline_tasks
+    from services.admin_integration_service import get_ma_pipeline_tasks, check_portals_health
     from services.notification_service import sync_approval_notifications, sync_ma_loi_accepted_notifications
+    from services.integration_resilience import admin_circuit_breaker, ma_circuit_breaker, CircuitState
 
+    iteration = 0
     while True:
         try:
-            reqs = await get_pending_purchase_requests()
-            import hashlib
-            fingerprint = hashlib.md5(
-                json.dumps([(r.get("id"), r.get("status"), r.get("amount")) for r in reqs], sort_keys=True).encode()
-            ).hexdigest()
+            iteration += 1
+            # 1. Check Admin Portal Approvals
+            if admin_circuit_breaker.state != CircuitState.OPEN:
+                reqs = await get_pending_purchase_requests()
+                if reqs is not None and isinstance(reqs, list):
+                    import hashlib
+                    fingerprint = hashlib.md5(
+                        json.dumps([(r.get("id"), r.get("status"), r.get("amount")) for r in reqs], sort_keys=True).encode()
+                    ).hexdigest()
 
-            if _last_known_pending_hash is not None and fingerprint != _last_known_pending_hash:
-                await sync_approval_notifications(reqs)
+                    if _last_known_pending_hash is not None and fingerprint != _last_known_pending_hash:
+                        await sync_approval_notifications(reqs)
+                        await broadcast_event({
+                            "event_type": "PURCHASE_REQUESTS_UPDATED",
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "count": len(reqs),
+                        })
+                    elif _last_known_pending_hash is None and reqs:
+                        await sync_approval_notifications(reqs)
+
+                    _last_known_pending_hash = fingerprint
+
+            # 2. Check M&A LOI Accepted deals
+            if ma_circuit_breaker.state != CircuitState.OPEN:
+                ma_tasks = await get_ma_pipeline_tasks(limit=100, skip=0)
+                if ma_tasks and isinstance(ma_tasks, list):
+                    accepted_loi_tasks = [
+                        t for t in ma_tasks
+                        if (t.get("priority_name") or "").lower() in ["loi sent - accepted", "loi accepted"]
+                    ]
+                    import hashlib
+                    ma_fingerprint = hashlib.md5(
+                        json.dumps([(t.get("id"), t.get("company_name"), t.get("revenue")) for t in accepted_loi_tasks], sort_keys=True).encode()
+                    ).hexdigest()
+
+                    if _last_known_ma_loi_hash is not None and ma_fingerprint != _last_known_ma_loi_hash:
+                        await sync_ma_loi_accepted_notifications(accepted_loi_tasks)
+                        await broadcast_event({
+                            "event_type": "M&A_LOI_ACCEPTED_UPDATED",
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "count": len(accepted_loi_tasks),
+                        })
+                    elif _last_known_ma_loi_hash is None and accepted_loi_tasks:
+                        await sync_ma_loi_accepted_notifications(accepted_loi_tasks)
+
+                    _last_known_ma_loi_hash = ma_fingerprint
+
+            # 3. Broadcast portal health telemetry every 2 iterations (~24s)
+            if iteration % 2 == 0:
+                health = await check_portals_health()
                 await broadcast_event({
-                    "event_type": "PURCHASE_REQUESTS_UPDATED",
+                    "event_type": "PORTALS_STATUS_UPDATED",
                     "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "count": len(reqs),
+                    "portals": health,
                 })
-            elif _last_known_pending_hash is None and reqs:
-                await sync_approval_notifications(reqs)
-
-            _last_known_pending_hash = fingerprint
         except Exception as exc:
-            logger.debug(f"Admin approval background sync note: {exc}")
-
-        # Sync M&A LOI Accepted deals
-        try:
-            ma_tasks = await get_ma_pipeline_tasks(limit=100, skip=0)
-            accepted_loi_tasks = [
-                t for t in ma_tasks
-                if (t.get("priority_name") or "").lower() in ["loi sent - accepted", "loi accepted"]
-            ]
-            import hashlib
-            ma_fingerprint = hashlib.md5(
-                json.dumps([(t.get("id"), t.get("company_name"), t.get("priority_name")) for t in accepted_loi_tasks], sort_keys=True).encode()
-            ).hexdigest()
-
-            if _last_known_ma_loi_hash is not None and ma_fingerprint != _last_known_ma_loi_hash:
-                newly_synced = await sync_ma_loi_accepted_notifications(accepted_loi_tasks)
-                for t in accepted_loi_tasks:
-                    await broadcast_event({
-                        "event_type": "M&A_LOI_ACCEPTED",
-                        "source": "m7a",
-                        "entity_id": f"DEAL-{t.get('id')}",
-                        "title": f"🎉 LOI Accepted: {t.get('company_name')}",
-                        "data": t,
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                    })
-            elif _last_known_ma_loi_hash is None and accepted_loi_tasks:
-                await sync_ma_loi_accepted_notifications(accepted_loi_tasks)
-
-            _last_known_ma_loi_hash = ma_fingerprint
-        except Exception as exc:
-            logger.debug(f"M&A LOI background sync note: {exc}")
-
-        await asyncio.sleep(4.0)
-
+            logger.debug(f"Background sync iteration note: {exc}")
+        await asyncio.sleep(12.0)
 
 
 @router.get("/portals-status")

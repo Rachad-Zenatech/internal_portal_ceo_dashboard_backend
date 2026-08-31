@@ -1,3 +1,4 @@
+from tools.upload_files import router as upload_files_router
 # server.py - CEO Executive Dashboard Backend Server
 import asyncio
 import logging
@@ -201,6 +202,8 @@ app.include_router(dashboard_router, prefix="/api/dashboard", tags=["CEO Dashboa
 app.include_router(dashboard_router, prefix="/accounting", tags=["Accounting Metrics"])
 app.include_router(dashboard_router, prefix="/api/accounting", tags=["Accounting Metrics"])
 app.include_router(ceo_integration_router, prefix="/api/v1/ceo", tags=["CEO Application Integration"])
+app.include_router(upload_files_router, prefix="/api/upload-files", tags=["Upload Files & Archives"])
+app.include_router(upload_files_router, prefix="/upload-files", tags=["Upload Files & Archives"])
 app.include_router(approver_roles_router, prefix="/api", tags=["Approver Roles"], dependencies=authenticated)
 app.include_router(graph_router, prefix="/api", tags=["Microsoft Graph"], dependencies=authenticated)
 app.include_router(workflow_assignment_router, tags=["Workflow Assignments"], dependencies=authenticated)

@@ -23,8 +23,9 @@ logger = logging.getLogger(__name__)
 ADMIN_API_BASE = os.getenv("ADMIN_PORTAL_API_URL", os.getenv("ADMIN_API_BASE", "http://127.0.0.1:8001"))
 CEO_DATA_API_URL = os.getenv("CEO_DATA_API_URL", os.getenv("INTERNAL_API_URL", "http://127.0.0.1:8005"))
 MA_API_BASE = os.getenv("MA_PORTAL_API_URL", "http://127.0.0.1:8000")
-TIMEOUT_SECONDS = float(os.getenv("INTEGRATION_TIMEOUT_SECONDS", "5.0"))
-HARD_TIMEOUT_SECONDS = float(os.getenv("HARD_TIMEOUT_SECONDS", "30.0"))
+TIMEOUT_SECONDS = float(os.getenv("INTEGRATION_TIMEOUT_SECONDS", "1.2"))
+CONNECT_TIMEOUT = 0.5
+HARD_TIMEOUT_SECONDS = float(os.getenv("HARD_TIMEOUT_SECONDS", "15.0"))
 
 JWT_SECRET = os.environ.get("JWT_SECRET") or os.environ.get("SESSION_SECRET") or "OU2YW8HGoJJMb7+aAVjoxRXah2gSUtvPLPlzK8G6j9c="
 JWT_ALGORITHM = "HS256"
@@ -182,7 +183,8 @@ async def _fetch_admin_raw_requests(user_id: Optional[UUID] = None) -> List[Dict
     token = await _generate_service_token(user_id)
     headers = {"Authorization": f"Bearer {token}"}
     url = f"{ADMIN_API_BASE}/api/purchasing/requests"
-    async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
+    client_timeout = httpx.Timeout(TIMEOUT_SECONDS, connect=CONNECT_TIMEOUT)
+    async with httpx.AsyncClient(timeout=client_timeout) as client:
         resp = await client.get(url, headers=headers)
         if resp.status_code == 200:
             data = resp.json()
@@ -338,66 +340,89 @@ async def get_admin_tasks(user_id: Optional[UUID] = None) -> List[Dict[str, Any]
 
 async def get_ma_pipeline_tasks(limit: int = 50, skip: int = 0, loi_accepted_only: bool = False) -> List[Dict[str, Any]]:
     """
-    Fetches active M&A acquisition pipeline tasks from the M&A Microservice API.
-    If loi_accepted_only is True, filters the full dataset specifically for LOI Accepted deals.
+    Fetches active M&A acquisition pipeline tasks from the M&A Microservice API with circuit breaker resilience.
     """
-    token = await _generate_service_token(user_id=UUID("1623e39f-1d87-4e6d-a6c3-3195c6ab773b"))
-    headers = {"Authorization": f"Bearer {token}"}
-    url = f"{MA_API_BASE}/api/pipeline/tasks?limit=1000"
-    try:
-        async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
+    async def _fetch():
+        token = await _generate_service_token(user_id=UUID("1623e39f-1d87-4e6d-a6c3-3195c6ab773b"))
+        headers = {"Authorization": f"Bearer {token}"}
+        url = f"{MA_API_BASE}/api/pipeline/tasks?limit=1000"
+        client_timeout = httpx.Timeout(TIMEOUT_SECONDS, connect=CONNECT_TIMEOUT)
+        async with httpx.AsyncClient(timeout=client_timeout) as client:
             resp = await client.get(url, headers=headers)
             if resp.status_code == 200:
                 data = resp.json()
-                if isinstance(data, list):
-                    if loi_accepted_only:
-                        filtered = [
-                            t for t in data
-                            if (t.get("priority_name") or "").lower() in ["loi sent - accepted", "loi accepted"]
-                        ]
-                        return filtered[skip : skip + limit] if limit else filtered
-                    return data[skip : skip + limit]
-            else:
-                logger.warning(f"M&A microservice API returned status {resp.status_code}: {resp.text[:200]}")
-    except Exception as exc:
-        logger.warning(f"M&A microservice API request failed: {exc}")
-    return []
+                return data if isinstance(data, list) else []
+            return []
+
+    resilient_resp = await execute_resilient_call(
+        circuit=ma_circuit_breaker,
+        cache_key="ma_pipeline_tasks_all",
+        fetch_fn=_fetch,
+        timeout_seconds=TIMEOUT_SECONDS,
+    )
+    raw_data = resilient_resp.get("data") or []
+    if loi_accepted_only:
+        filtered = [
+            t for t in raw_data
+            if (t.get("priority_name") or "").lower() in ["loi sent - accepted", "loi accepted"]
+        ]
+        return filtered[skip : skip + limit] if limit else filtered
+    return raw_data[skip : skip + limit] if limit else raw_data
 
 
 async def get_ma_pipeline_summary() -> Dict[str, Any]:
     """
-    Aggregates executive metrics via M&A Microservice API endpoints.
+    Aggregates executive metrics via M&A Microservice API endpoints with circuit breaker resilience.
     """
-    token = await _generate_service_token(user_id=UUID("1623e39f-1d87-4e6d-a6c3-3195c6ab773b"))
-    headers = {"Authorization": f"Bearer {token}"}
-    tasks = []
-    call_logs_count = 0
-    companies_count = 0
+    async def _fetch():
+        token = await _generate_service_token(user_id=UUID("1623e39f-1d87-4e6d-a6c3-3195c6ab773b"))
+        headers = {"Authorization": f"Bearer {token}"}
+        tasks = []
+        call_logs_count = 0
+        companies_count = 0
+        client_timeout = httpx.Timeout(TIMEOUT_SECONDS, connect=CONNECT_TIMEOUT)
 
-    async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
-        try:
-            r_tasks = await client.get(f"{MA_API_BASE}/api/pipeline/tasks", headers=headers)
-            if r_tasks.status_code == 200:
-                data = r_tasks.json()
-                tasks = data if isinstance(data, list) else []
-        except Exception as exc:
-            logger.warning(f"M&A microservice /api/pipeline/tasks failed: {exc}")
+        async with httpx.AsyncClient(timeout=client_timeout) as client:
+            try:
+                r_tasks = await client.get(f"{MA_API_BASE}/api/pipeline/tasks", headers=headers)
+                if r_tasks.status_code == 200:
+                    data = r_tasks.json()
+                    tasks = data if isinstance(data, list) else []
+            except Exception:
+                pass
 
-        try:
-            r_calls = await client.get(f"{MA_API_BASE}/api/pipeline/call-logs", headers=headers)
-            if r_calls.status_code == 200:
-                data = r_calls.json()
-                call_logs_count = len(data) if isinstance(data, list) else 0
-        except Exception:
-            pass
+            try:
+                r_calls = await client.get(f"{MA_API_BASE}/api/pipeline/call-logs", headers=headers)
+                if r_calls.status_code == 200:
+                    data = r_calls.json()
+                    call_logs_count = len(data) if isinstance(data, list) else 0
+            except Exception:
+                pass
 
-        try:
-            r_comp = await client.get(f"{MA_API_BASE}/api/pipeline/companies", headers=headers)
-            if r_comp.status_code == 200:
-                data = r_comp.json()
-                companies_count = len(data) if isinstance(data, list) else 0
-        except Exception:
-            pass
+            try:
+                r_comp = await client.get(f"{MA_API_BASE}/api/pipeline/companies", headers=headers)
+                if r_comp.status_code == 200:
+                    data = r_comp.json()
+                    companies_count = len(data) if isinstance(data, list) else 0
+            except Exception:
+                pass
+
+        return {
+            "tasks": tasks,
+            "call_logs_count": call_logs_count,
+            "companies_count": companies_count,
+        }
+
+    resilient_resp = await execute_resilient_call(
+        circuit=ma_circuit_breaker,
+        cache_key="ma_pipeline_summary_raw",
+        fetch_fn=_fetch,
+        timeout_seconds=TIMEOUT_SECONDS,
+    )
+    raw = resilient_resp.get("data") or {}
+    tasks = raw.get("tasks") or []
+    call_logs_count = raw.get("call_logs_count") or 0
+    companies_count = raw.get("companies_count") or 0
 
     # Break down tasks by priority / status
     priorities: Dict[str, int] = {}

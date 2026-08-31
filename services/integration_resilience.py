@@ -109,9 +109,9 @@ class ResilientCache:
         return None, None
 
 
-# Global instances per integration
-admin_circuit_breaker = CircuitBreaker("AdminPortal", failure_threshold=3, recovery_timeout_seconds=15.0, request_timeout_seconds=5.0)
-ma_circuit_breaker = CircuitBreaker("MASystem", failure_threshold=3, recovery_timeout_seconds=15.0, request_timeout_seconds=5.0)
+# Global instances per integration - fast 1.2s timeout and single-failure trip for instant offline failover
+admin_circuit_breaker = CircuitBreaker("AdminPortal", failure_threshold=1, recovery_timeout_seconds=10.0, request_timeout_seconds=1.2)
+ma_circuit_breaker = CircuitBreaker("MASystem", failure_threshold=1, recovery_timeout_seconds=30.0, request_timeout_seconds=1.2)
 resilient_cache = ResilientCache()
 
 
