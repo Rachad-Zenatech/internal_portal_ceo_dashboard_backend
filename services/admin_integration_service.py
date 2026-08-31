@@ -179,6 +179,28 @@ async def check_portals_health() -> List[Dict[str, Any]]:
         return await asyncio.gather(*[_check_single(p, client) for p in portals])
 
 
+_HEALTH_CHECK_INTERVAL_SECONDS = 30.0
+_health_cache: Dict[str, Any] = {"data": None, "checked_at": 0.0}
+_health_check_lock = asyncio.Lock()
+
+
+async def get_portal_health(force: bool = False) -> List[Dict[str, Any]]:
+    """
+    Single rate-limited entry point for portal health - shared by the background poller and
+    the on-demand /portals-status endpoint so a downed service is never pinged more than once
+    every _HEALTH_CHECK_INTERVAL_SECONDS combined, no matter who's asking.
+    """
+    async with _health_check_lock:
+        now = time.time()
+        is_stale = _health_cache["data"] is None or (now - _health_cache["checked_at"]) >= _HEALTH_CHECK_INTERVAL_SECONDS
+        if not force and not is_stale:
+            return _health_cache["data"]
+        data = await check_portals_health()
+        _health_cache["data"] = data
+        _health_cache["checked_at"] = now
+        return data
+
+
 async def _fetch_admin_raw_requests(user_id: Optional[UUID] = None) -> List[Dict[str, Any]]:
     token = await _generate_service_token(user_id)
     headers = {"Authorization": f"Bearer {token}"}
@@ -297,6 +319,12 @@ async def execute_purchase_transition(request_id: str, action: str, note: Option
         }
     }
 
+    if not admin_circuit_breaker.allow_request():
+        return {
+            "success": False,
+            "error": "Administration Portal is temporarily offline (circuit open). Please retry shortly.",
+        }
+
     try:
         async with httpx.AsyncClient(timeout=min(15.0, HARD_TIMEOUT_SECONDS)) as client:
             resp = await client.post(url, json=payload, headers=headers)
@@ -377,35 +405,36 @@ async def get_ma_pipeline_summary() -> Dict[str, Any]:
     async def _fetch():
         token = await _generate_service_token(user_id=UUID("1623e39f-1d87-4e6d-a6c3-3195c6ab773b"))
         headers = {"Authorization": f"Bearer {token}"}
-        tasks = []
-        call_logs_count = 0
-        companies_count = 0
         client_timeout = httpx.Timeout(TIMEOUT_SECONDS, connect=CONNECT_TIMEOUT)
 
         async with httpx.AsyncClient(timeout=client_timeout) as client:
-            try:
-                r_tasks = await client.get(f"{MA_API_BASE}/api/pipeline/tasks", headers=headers)
-                if r_tasks.status_code == 200:
-                    data = r_tasks.json()
-                    tasks = data if isinstance(data, list) else []
-            except Exception:
-                pass
+            r_tasks, r_calls, r_comp = await asyncio.gather(
+                client.get(f"{MA_API_BASE}/api/pipeline/tasks", headers=headers),
+                client.get(f"{MA_API_BASE}/api/pipeline/call-logs", headers=headers),
+                client.get(f"{MA_API_BASE}/api/pipeline/companies", headers=headers),
+                return_exceptions=True,
+            )
 
-            try:
-                r_calls = await client.get(f"{MA_API_BASE}/api/pipeline/call-logs", headers=headers)
-                if r_calls.status_code == 200:
-                    data = r_calls.json()
-                    call_logs_count = len(data) if isinstance(data, list) else 0
-            except Exception:
-                pass
+        # `tasks` is the primary connectivity signal for this call - a real outage must
+        # propagate so the shared ma_circuit_breaker records the failure. If every failure
+        # here is swallowed instead, execute_resilient_call always sees "success" and keeps
+        # resetting the breaker to CLOSED, forcing every other M&A call (pipeline, events)
+        # to repeat the full slow network attempt on every page visit instead of fast-failing.
+        if isinstance(r_tasks, Exception):
+            raise r_tasks
 
-            try:
-                r_comp = await client.get(f"{MA_API_BASE}/api/pipeline/companies", headers=headers)
-                if r_comp.status_code == 200:
-                    data = r_comp.json()
-                    companies_count = len(data) if isinstance(data, list) else 0
-            except Exception:
-                pass
+        tasks = r_tasks.json() if r_tasks.status_code == 200 else []
+        tasks = tasks if isinstance(tasks, list) else []
+
+        call_logs_count = 0
+        if not isinstance(r_calls, Exception) and r_calls.status_code == 200:
+            data = r_calls.json()
+            call_logs_count = len(data) if isinstance(data, list) else 0
+
+        companies_count = 0
+        if not isinstance(r_comp, Exception) and r_comp.status_code == 200:
+            data = r_comp.json()
+            companies_count = len(data) if isinstance(data, list) else 0
 
         return {
             "tasks": tasks,

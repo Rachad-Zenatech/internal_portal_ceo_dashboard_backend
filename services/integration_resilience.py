@@ -17,9 +17,12 @@ T = TypeVar("T")
 
 
 class CircuitState:
-    CLOSED = "CLOSED"      # Normal operation
-    OPEN = "OPEN"          # Failing, fast-reject to prevent cascading load
-    HALF_OPEN = "HALF_OPEN"# Probing if service has recovered
+    CLOSED = "CLOSED"      # Known reachable (confirmed by the last health check) - calls go through
+    OPEN = "OPEN"          # Known unreachable - fast-reject, no network attempt at all
+    HALF_OPEN = "HALF_OPEN"  # Unused by the health-check-driven flow; kept for external state display
+
+
+StateChangeListener = Callable[[str, str, str], None]
 
 
 class CircuitBreaker:
@@ -27,63 +30,84 @@ class CircuitBreaker:
         self,
         name: str,
         failure_threshold: int = 3,
-        recovery_timeout_seconds: float = 15.0,
         request_timeout_seconds: float = 5.0,
     ):
         self.name = name
         self.failure_threshold = failure_threshold
-        self.recovery_timeout_seconds = recovery_timeout_seconds
         self.request_timeout_seconds = request_timeout_seconds
-        
+
         self.state = CircuitState.CLOSED
         self.failure_count = 0
         self.last_failure_time: Optional[float] = None
         self.last_state_change: float = time.time()
+        self._listeners: list[StateChangeListener] = []
+
+    def add_listener(self, listener: StateChangeListener) -> None:
+        """Registers a callback fired as (circuit_name, old_state, new_state) on every state transition."""
+        self._listeners.append(listener)
+
+    def _transition_to(self, new_state: str) -> None:
+        old_state = self.state
+        self.state = new_state
+        self.last_state_change = time.time()
+        if old_state == new_state:
+            return
+        for listener in self._listeners:
+            try:
+                listener(self.name, old_state, new_state)
+            except Exception:
+                logger.debug(f"[CircuitBreaker:{self.name}] State-change listener raised", exc_info=True)
 
     def record_success(self):
-        if self.state != CircuitState.CLOSED:
-            logger.info(
-                f"[CircuitBreaker:{self.name}] Service recovered. State transitioning from {self.state} -> CLOSED",
-                extra={"event": "circuit_breaker_closed", "circuit": self.name},
-            )
-        self.state = CircuitState.CLOSED
+        """Called after a real data call succeeds. Only ever resets the failure count -
+        recovery back to CLOSED is confirmed exclusively by mark_online() (the health poll),
+        never inferred from a single lucky call."""
         self.failure_count = 0
         self.last_failure_time = None
 
     def record_failure(self, error: Exception):
+        """Called after a real data call fails. Lets an outage that happens between health
+        polls be detected immediately, without waiting for the next poll tick."""
         self.failure_count += 1
         self.last_failure_time = time.time()
-        
-        if self.state == CircuitState.HALF_OPEN or self.failure_count >= self.failure_threshold:
-            if self.state != CircuitState.OPEN:
-                logger.warning(
-                    f"[CircuitBreaker:{self.name}] Failure threshold reached ({self.failure_count} failures). "
-                    f"State transitioning -> OPEN (cooling down for {self.recovery_timeout_seconds}s). Error: {error}",
-                    extra={"event": "circuit_breaker_opened", "circuit": self.name, "error": str(error)},
-                )
-            self.state = CircuitState.OPEN
-            self.last_state_change = time.time()
+
+        if self.failure_count >= self.failure_threshold and self.state != CircuitState.OPEN:
+            logger.warning(
+                f"[CircuitBreaker:{self.name}] Failure threshold reached ({self.failure_count} failures). "
+                f"State transitioning -> OPEN. Error: {error}",
+                extra={"event": "circuit_breaker_opened", "circuit": self.name, "error": str(error)},
+            )
+            self._transition_to(CircuitState.OPEN)
+
+    def mark_online(self) -> None:
+        """Called by the lightweight, frequent health poll when it confirms the service
+        is reachable. This is the only path back to CLOSED - there is no blind timed retry."""
+        if self.state != CircuitState.CLOSED:
+            logger.info(
+                f"[CircuitBreaker:{self.name}] Health check confirmed recovery. State transitioning "
+                f"from {self.state} -> CLOSED",
+                extra={"event": "circuit_breaker_closed", "circuit": self.name},
+            )
+            self._transition_to(CircuitState.CLOSED)
+        self.failure_count = 0
+        self.last_failure_time = None
+
+    def mark_offline(self, reason: str = "health check failed") -> None:
+        """Called by the lightweight, frequent health poll when it confirms the service is
+        unreachable. Opens the circuit immediately so no data call even attempts the network
+        until a later health check confirms recovery."""
+        if self.state != CircuitState.OPEN:
+            logger.warning(
+                f"[CircuitBreaker:{self.name}] Health check confirmed outage ({reason}). "
+                f"State transitioning -> OPEN.",
+                extra={"event": "circuit_breaker_opened", "circuit": self.name, "error": reason},
+            )
+        self._transition_to(CircuitState.OPEN)
 
     def allow_request(self) -> bool:
-        if self.state == CircuitState.CLOSED:
-            return True
-        
-        if self.state == CircuitState.OPEN:
-            # Check if recovery cooldown period has passed
-            if time.time() - self.last_state_change >= self.recovery_timeout_seconds:
-                logger.info(
-                    f"[CircuitBreaker:{self.name}] Recovery cooldown expired. State transitioning -> HALF_OPEN (probing)",
-                    extra={"event": "circuit_breaker_half_open", "circuit": self.name},
-                )
-                self.state = CircuitState.HALF_OPEN
-                self.last_state_change = time.time()
-                return True
-            return False
-            
-        if self.state == CircuitState.HALF_OPEN:
-            return True
-            
-        return True
+        """Pure state check - no timers, no guessing. A call is allowed only while the last
+        health check (or a prior successful call) confirmed the service is reachable."""
+        return self.state != CircuitState.OPEN
 
 
 class ResilientCacheEntry:
@@ -109,9 +133,11 @@ class ResilientCache:
         return None, None
 
 
-# Global instances per integration - fast 1.2s timeout and single-failure trip for instant offline failover
-admin_circuit_breaker = CircuitBreaker("AdminPortal", failure_threshold=1, recovery_timeout_seconds=10.0, request_timeout_seconds=1.2)
-ma_circuit_breaker = CircuitBreaker("MASystem", failure_threshold=1, recovery_timeout_seconds=30.0, request_timeout_seconds=1.2)
+# Global instances per integration - fast 1.2s timeout and single-failure trip for instant offline failover.
+# Recovery is confirmed exclusively by the lightweight health poll (see poll_portal_health in
+# tools/ceo_integration_router.py) calling mark_online() - there is no blind timed retry here.
+admin_circuit_breaker = CircuitBreaker("AdminPortal", failure_threshold=1, request_timeout_seconds=1.2)
+ma_circuit_breaker = CircuitBreaker("MASystem", failure_threshold=1, request_timeout_seconds=1.2)
 resilient_cache = ResilientCache()
 
 

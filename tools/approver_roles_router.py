@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from postgresql_db.database import get_pool
 from services.auth_service import get_current_user_id_dependency
 from services.admin_integration_service import _generate_service_token
+from services.integration_resilience import admin_circuit_breaker
 
 logger = logging.getLogger(__name__)
 
@@ -101,17 +102,22 @@ async def ensure_approver_roles():
 )
 async def get_approver_role_members(role_code: str):
     role_code = role_code.upper()
-    token = await _generate_service_token()
-    headers = {"Authorization": f"Bearer {token}"}
-    url = f"{ADMIN_API_BASE}/api/approver-roles/{role_code}/members"
 
-    try:
-        async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
-            resp = await client.get(url, headers=headers)
-            if resp.status_code == 200:
-                return resp.json()
-    except Exception as exc:
-        logger.warning(f"Admin API approver members query note: {exc}")
+    if admin_circuit_breaker.allow_request():
+        token = await _generate_service_token()
+        headers = {"Authorization": f"Bearer {token}"}
+        url = f"{ADMIN_API_BASE}/api/approver-roles/{role_code}/members"
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
+                resp = await client.get(url, headers=headers)
+                admin_circuit_breaker.record_success()
+                if resp.status_code == 200:
+                    return resp.json()
+        except Exception as exc:
+            admin_circuit_breaker.record_failure(exc)
+            logger.warning(f"Admin API approver members query note: {exc}")
+    else:
+        logger.debug("Admin Portal circuit open; skipping approver-members fetch, using local fallback")
 
     pool = get_pool()
     async with pool.acquire() as conn:
@@ -149,37 +155,42 @@ async def get_approver_role_members(role_code: str):
 )
 async def add_approver_role_members(role_code: str, members: List[ApproverMemberIn]):
     role_code = role_code.upper()
-    token = await _generate_service_token()
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     base_url = f"{ADMIN_API_BASE}/api/approver-roles/{role_code}/members"
 
     admin_res = None
-    try:
-        async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
-            # 1. Fetch current members to identify anyone who was removed
-            current_resp = await client.get(base_url, headers=headers)
-            if current_resp.status_code == 200:
-                current_members = current_resp.json()
-                new_emails = {m.email.lower() for m in members if m.email}
-                new_ids = {str(m.object_id) for m in members if m.object_id}
+    if admin_circuit_breaker.allow_request():
+        token = await _generate_service_token()
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
+                # 1. Fetch current members to identify anyone who was removed
+                current_resp = await client.get(base_url, headers=headers)
+                if current_resp.status_code == 200:
+                    current_members = current_resp.json()
+                    new_emails = {m.email.lower() for m in members if m.email}
+                    new_ids = {str(m.object_id) for m in members if m.object_id}
 
-                # Delete members that are no longer assigned
-                for existing in current_members:
-                    existing_id = str(existing.get("user_id") or "")
-                    existing_email = str(existing.get("email") or "").lower()
-                    if existing_id and existing_id not in new_ids and existing_email not in new_emails:
-                        try:
-                            await client.delete(f"{base_url}/{existing_id}", headers=headers)
-                        except Exception as del_err:
-                            logger.debug(f"Prune member {existing_id} note: {del_err}")
+                    # Delete members that are no longer assigned
+                    for existing in current_members:
+                        existing_id = str(existing.get("user_id") or "")
+                        existing_email = str(existing.get("email") or "").lower()
+                        if existing_id and existing_id not in new_ids and existing_email not in new_emails:
+                            try:
+                                await client.delete(f"{base_url}/{existing_id}", headers=headers)
+                            except Exception as del_err:
+                                logger.debug(f"Prune member {existing_id} note: {del_err}")
 
-            # 2. Add / Update new members
-            if members:
-                resp = await client.post(base_url, json=[m.model_dump() for m in members], headers=headers)
-                if resp.status_code in [200, 201]:
-                    admin_res = resp.json()
-    except Exception as exc:
-        logger.warning(f"Admin API approver assignment note: {exc}")
+                # 2. Add / Update new members
+                if members:
+                    resp = await client.post(base_url, json=[m.model_dump() for m in members], headers=headers)
+                    if resp.status_code in [200, 201]:
+                        admin_res = resp.json()
+                admin_circuit_breaker.record_success()
+        except Exception as exc:
+            admin_circuit_breaker.record_failure(exc)
+            logger.warning(f"Admin API approver assignment note: {exc}")
+    else:
+        logger.debug("Admin Portal circuit open; skipping approver-members assignment sync, using local audit log only")
 
     # Log to CEO audit logs in Supabase
     try:
@@ -235,15 +246,20 @@ async def add_approver_role_members(role_code: str, members: List[ApproverMember
 )
 async def remove_approver_role_member(role_code: str, user_id: str):
     role_code = role_code.upper()
-    token = await _generate_service_token()
-    headers = {"Authorization": f"Bearer {token}"}
-    url = f"{ADMIN_API_BASE}/api/approver-roles/{role_code}/members/{user_id}"
 
-    try:
-        async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
-            await client.delete(url, headers=headers)
-    except Exception as exc:
-        logger.warning(f"Admin API approver removal note: {exc}")
+    if admin_circuit_breaker.allow_request():
+        token = await _generate_service_token()
+        headers = {"Authorization": f"Bearer {token}"}
+        url = f"{ADMIN_API_BASE}/api/approver-roles/{role_code}/members/{user_id}"
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
+                await client.delete(url, headers=headers)
+            admin_circuit_breaker.record_success()
+        except Exception as exc:
+            admin_circuit_breaker.record_failure(exc)
+            logger.warning(f"Admin API approver removal note: {exc}")
+    else:
+        logger.debug("Admin Portal circuit open; skipping approver-member removal sync, using local audit log only")
 
     # Log to CEO audit logs in Supabase
     try:

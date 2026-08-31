@@ -8,6 +8,7 @@ import httpx
 
 from services.auth_service import get_current_user_id_dependency
 from services.admin_integration_service import _generate_service_token
+from services.integration_resilience import admin_circuit_breaker
 
 logger = logging.getLogger(__name__)
 
@@ -48,21 +49,26 @@ def _sanitize_payload_for_admin(payload: WorkflowAssignmentInput) -> dict:
 @router.get("/purchasing/assignments", response_model=List[WorkflowAssignmentResponse], dependencies=[Depends(get_current_user_id_dependency)])
 @router.get("/api/purchasing/assignments", response_model=List[WorkflowAssignmentResponse], dependencies=[Depends(get_current_user_id_dependency)])
 async def get_assignments():
-    token = await _generate_service_token()
-    headers = {"Authorization": f"Bearer {token}"}
-    url = f"{ADMIN_API_BASE}/api/purchasing/assignments"
-    try:
-        async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
-            resp = await client.get(url, headers=headers)
-            if resp.status_code == 200:
-                raw_items = resp.json()
-                filtered = [
-                    item for item in raw_items
-                    if not str(item.get("role", "")).startswith("DELETED_")
-                ]
-                return filtered
-    except Exception as exc:
-        logger.warning(f"Admin API assignments query error: {exc}")
+    if admin_circuit_breaker.allow_request():
+        token = await _generate_service_token()
+        headers = {"Authorization": f"Bearer {token}"}
+        url = f"{ADMIN_API_BASE}/api/purchasing/assignments"
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
+                resp = await client.get(url, headers=headers)
+                admin_circuit_breaker.record_success()
+                if resp.status_code == 200:
+                    raw_items = resp.json()
+                    filtered = [
+                        item for item in raw_items
+                        if not str(item.get("role", "")).startswith("DELETED_")
+                    ]
+                    return filtered
+        except Exception as exc:
+            admin_circuit_breaker.record_failure(exc)
+            logger.warning(f"Admin API assignments query error: {exc}")
+    else:
+        logger.debug("Admin Portal circuit open; skipping assignments fetch, using local fallback")
 
     from postgresql_db.database import get_pool
     pool = get_pool()
@@ -83,22 +89,27 @@ async def get_assignments():
 @router.post("/purchasing/assignments", response_model=List[WorkflowAssignmentResponse], dependencies=[Depends(get_current_user_id_dependency)])
 @router.post("/api/purchasing/assignments", response_model=List[WorkflowAssignmentResponse], dependencies=[Depends(get_current_user_id_dependency)])
 async def create_assignment(payload: WorkflowAssignmentInput):
-    token = await _generate_service_token()
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    url = f"{ADMIN_API_BASE}/api/purchasing/assignments"
     sanitized = _sanitize_payload_for_admin(payload)
-    try:
-        async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
-            resp = await client.post(url, json=sanitized, headers=headers)
-            if resp.status_code in [200, 201]:
-                res_data = resp.json()
-                if isinstance(res_data, list):
-                    return res_data
-                return [res_data]
-            else:
-                logger.warning(f"Admin API create assignment returned {resp.status_code}: {resp.text}")
-    except Exception as exc:
-        logger.warning(f"Admin API assignment create error: {exc}")
+    if admin_circuit_breaker.allow_request():
+        token = await _generate_service_token()
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        url = f"{ADMIN_API_BASE}/api/purchasing/assignments"
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
+                resp = await client.post(url, json=sanitized, headers=headers)
+                admin_circuit_breaker.record_success()
+                if resp.status_code in [200, 201]:
+                    res_data = resp.json()
+                    if isinstance(res_data, list):
+                        return res_data
+                    return [res_data]
+                else:
+                    logger.warning(f"Admin API create assignment returned {resp.status_code}: {resp.text}")
+        except Exception as exc:
+            admin_circuit_breaker.record_failure(exc)
+            logger.warning(f"Admin API assignment create error: {exc}")
+    else:
+        logger.debug("Admin Portal circuit open; skipping assignment create sync, using local fallback")
 
     from postgresql_db.database import get_pool
     pool = get_pool()
@@ -133,19 +144,24 @@ async def create_assignment(payload: WorkflowAssignmentInput):
 @router.put("/purchasing/assignments/{id}", response_model=WorkflowAssignmentResponse, dependencies=[Depends(get_current_user_id_dependency)])
 @router.put("/api/purchasing/assignments/{id}", response_model=WorkflowAssignmentResponse, dependencies=[Depends(get_current_user_id_dependency)])
 async def update_assignment(id: int, payload: WorkflowAssignmentInput):
-    token = await _generate_service_token()
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    url = f"{ADMIN_API_BASE}/api/purchasing/assignments/{id}"
     sanitized = _sanitize_payload_for_admin(payload)
-    try:
-        async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
-            resp = await client.put(url, json=sanitized, headers=headers)
-            if resp.status_code in [200, 201]:
-                return resp.json()
-            else:
-                logger.warning(f"Admin API update assignment {id} returned {resp.status_code}: {resp.text}")
-    except Exception as exc:
-        logger.warning(f"Admin API assignment update error: {exc}")
+    if admin_circuit_breaker.allow_request():
+        token = await _generate_service_token()
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        url = f"{ADMIN_API_BASE}/api/purchasing/assignments/{id}"
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
+                resp = await client.put(url, json=sanitized, headers=headers)
+                admin_circuit_breaker.record_success()
+                if resp.status_code in [200, 201]:
+                    return resp.json()
+                else:
+                    logger.warning(f"Admin API update assignment {id} returned {resp.status_code}: {resp.text}")
+        except Exception as exc:
+            admin_circuit_breaker.record_failure(exc)
+            logger.warning(f"Admin API assignment update error: {exc}")
+    else:
+        logger.debug("Admin Portal circuit open; skipping assignment update sync, using local fallback")
 
     from postgresql_db.database import get_pool
     pool = get_pool()
@@ -179,16 +195,21 @@ async def update_assignment(id: int, payload: WorkflowAssignmentInput):
 @router.get("/configuration/users", dependencies=[Depends(get_current_user_id_dependency)])
 @router.get("/api/configuration/users", dependencies=[Depends(get_current_user_id_dependency)])
 async def list_users(is_active: Optional[bool] = True):
-    token = await _generate_service_token()
-    headers = {"Authorization": f"Bearer {token}"}
-    url = f"{ADMIN_API_BASE}/api/configuration/users?is_active={'true' if is_active else 'false'}"
-    try:
-        async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
-            resp = await client.get(url, headers=headers)
-            if resp.status_code == 200:
-                return resp.json()
-    except Exception as exc:
-        logger.warning(f"Admin API list users error: {exc}")
+    if admin_circuit_breaker.allow_request():
+        token = await _generate_service_token()
+        headers = {"Authorization": f"Bearer {token}"}
+        url = f"{ADMIN_API_BASE}/api/configuration/users?is_active={'true' if is_active else 'false'}"
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
+                resp = await client.get(url, headers=headers)
+                admin_circuit_breaker.record_success()
+                if resp.status_code == 200:
+                    return resp.json()
+        except Exception as exc:
+            admin_circuit_breaker.record_failure(exc)
+            logger.warning(f"Admin API list users error: {exc}")
+    else:
+        logger.debug("Admin Portal circuit open; skipping users list fetch, using local fallback")
 
     from postgresql_db.database import get_pool
     pool = get_pool()

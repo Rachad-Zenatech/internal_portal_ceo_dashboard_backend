@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from postgresql_db.database import get_conn, fetch_all, fetch_one, execute
 from services.admin_integration_service import (
-    check_portals_health,
+    get_portal_health,
     get_pending_purchase_requests,
     get_completed_purchase_requests,
     execute_purchase_transition,
@@ -35,6 +35,52 @@ async def broadcast_event(event_dict: dict):
             q.put_nowait(event_dict)
         except Exception:
             pass
+
+
+_CIRCUIT_DISPLAY_NAMES = {
+    "AdminPortal": "Admin Portal",
+    "MASystem": "M&A System",
+}
+
+
+def _register_circuit_breaker_listeners():
+    """
+    Wires each integration circuit breaker to broadcast a SERVICE_STATE_CHANGED event
+    the instant it flips OPEN (offline), HALF_OPEN (probing), or CLOSED (back online),
+    instead of waiting for the ~24s portal health poll cycle to notice.
+    """
+    from services.integration_resilience import admin_circuit_breaker, ma_circuit_breaker, CircuitState
+
+    def _make_listener():
+        def _on_state_change(name: str, old_state: str, new_state: str):
+            status = {
+                CircuitState.CLOSED: "online",
+                CircuitState.HALF_OPEN: "checking",
+                CircuitState.OPEN: "offline",
+            }.get(new_state, "unknown")
+            event = {
+                "event_type": "SERVICE_STATE_CHANGED",
+                "source": name,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "data": {
+                    "service": _CIRCUIT_DISPLAY_NAMES.get(name, name),
+                    "circuit_state": new_state,
+                    "previous_state": old_state,
+                    "status": status,
+                },
+            }
+            try:
+                asyncio.get_running_loop().create_task(broadcast_event(event))
+            except RuntimeError:
+                # No running event loop (e.g. during import/shutdown) - nothing to notify yet.
+                pass
+        return _on_state_change
+
+    admin_circuit_breaker.add_listener(_make_listener())
+    ma_circuit_breaker.add_listener(_make_listener())
+
+
+_register_circuit_breaker_listeners()
 
 
 class CeoEventPayload(BaseModel):
@@ -88,6 +134,54 @@ async def stream_ceo_events():
 
 _last_known_pending_hash: Optional[str] = None
 _last_known_ma_loi_hash: Optional[str] = None
+_last_known_portal_fingerprint: Optional[str] = None
+
+_HEALTH_CHECK_TO_BREAKER = {
+    "ADMIN": "admin_circuit_breaker",
+    "M7A": "ma_circuit_breaker",
+}
+
+
+async def poll_portal_health():
+    """
+    Health poll that is the ONLY authority on circuit-breaker connectivity state: a data call
+    is allowed exactly when the most recent check here confirmed the service is reachable, and
+    blocked the instant it confirms otherwise - no blind timed retries through the heavier
+    business endpoints, no guessing. Capped at once every 30s via get_portal_health(), shared
+    with the on-demand /portals-status endpoint so a downed service is never pinged more often
+    than that combined, regardless of who triggers the check.
+    """
+    global _last_known_portal_fingerprint
+    from services.admin_integration_service import get_portal_health
+    from services.integration_resilience import admin_circuit_breaker, ma_circuit_breaker
+
+    breakers = {"admin_circuit_breaker": admin_circuit_breaker, "ma_circuit_breaker": ma_circuit_breaker}
+
+    while True:
+        try:
+            health = await get_portal_health()
+            for portal in health:
+                breaker = breakers.get(_HEALTH_CHECK_TO_BREAKER.get(portal.get("code") or ""))
+                if not breaker:
+                    continue
+                if portal.get("status") == "online":
+                    breaker.mark_online()
+                else:
+                    breaker.mark_offline(reason=portal.get("error") or portal.get("status") or "unreachable")
+
+            fingerprint = json.dumps(
+                [(p.get("code"), p.get("status"), p.get("latency_ms")) for p in health], sort_keys=True
+            )
+            if fingerprint != _last_known_portal_fingerprint:
+                _last_known_portal_fingerprint = fingerprint
+                await broadcast_event({
+                    "event_type": "PORTALS_STATUS_UPDATED",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "portals": health,
+                })
+        except Exception as exc:
+            logger.debug(f"Portal health poll note: {exc}")
+        await asyncio.sleep(30.0)
 
 
 async def poll_and_sync_admin_approvals():
@@ -97,14 +191,12 @@ async def poll_and_sync_admin_approvals():
     """
     global _last_known_pending_hash, _last_known_ma_loi_hash
     await asyncio.sleep(2.0)
-    from services.admin_integration_service import get_ma_pipeline_tasks, check_portals_health
+    from services.admin_integration_service import get_ma_pipeline_tasks
     from services.notification_service import sync_approval_notifications, sync_ma_loi_accepted_notifications
     from services.integration_resilience import admin_circuit_breaker, ma_circuit_breaker, CircuitState
 
-    iteration = 0
     while True:
         try:
-            iteration += 1
             # 1. Check Admin Portal Approvals
             if admin_circuit_breaker.state != CircuitState.OPEN:
                 reqs = await get_pending_purchase_requests()
@@ -150,15 +242,6 @@ async def poll_and_sync_admin_approvals():
                         await sync_ma_loi_accepted_notifications(accepted_loi_tasks)
 
                     _last_known_ma_loi_hash = ma_fingerprint
-
-            # 3. Broadcast portal health telemetry every 2 iterations (~24s)
-            if iteration % 2 == 0:
-                health = await check_portals_health()
-                await broadcast_event({
-                    "event_type": "PORTALS_STATUS_UPDATED",
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "portals": health,
-                })
         except Exception as exc:
             logger.debug(f"Background sync iteration note: {exc}")
         await asyncio.sleep(12.0)
@@ -167,9 +250,11 @@ async def poll_and_sync_admin_approvals():
 @router.get("/portals-status")
 async def get_portals_status():
     """
-    Returns real-time health and connectivity metrics for all integrated applications.
+    Returns health and connectivity metrics for all integrated applications, from the shared
+    cache that's refreshed at most once every 30s (see get_portal_health) - this never issues
+    its own extra ping to a downed service just because the frontend asked.
     """
-    return await check_portals_health()
+    return await get_portal_health()
 
 
 @router.get("/approvals/pending")
