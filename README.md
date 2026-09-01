@@ -242,3 +242,5 @@ Ensure `DATABASE_SSL=require` is present in `.env`. Supabase's transaction poole
   npx @modelcontextprotocol/inspector
   ```
   *(Connect using Transport: `Streamable HTTP`, URL: `http://localhost:8005/mcp`)*
+
+

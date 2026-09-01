@@ -163,14 +163,18 @@ async def execute_resilient_call(
     timeout = timeout_seconds or circuit.request_timeout_seconds
     cached_data, cached_updated_at = resilient_cache.get(cache_key)
 
-    # 1. Circuit Breaker Fast-Fail Check
-    if not circuit.allow_request():
-        logger.debug(f"[Resilience] Circuit {circuit.name} is OPEN. Serving stale cached data if available.")
+    # 1. Event-Driven Service Status Check via Registry
+    from services.service_status_registry import service_status_registry, normalize_service_name
+    svc_key = normalize_service_name(circuit.name.replace("Portal", "").replace("System", ""))
+    is_online = service_status_registry.is_service_online(svc_key)
+
+    if not is_online or not circuit.allow_request():
+        logger.debug(f"[Resilience] Service '{svc_key}' / Circuit {circuit.name} is not online. Fast-returning stale cached data.")
         return {
             "status": "stale" if cached_data is not None else "disconnected",
             "data": cached_data if cached_data is not None else [],
             "last_updated": cached_updated_at,
-            "error": f"{circuit.name} is temporarily offline (circuit open).",
+            "error": f"{circuit.name} is currently offline (service availability: {service_status_registry.get_service_status(svc_key)}).",
             "latency_ms": 0,
         }
 

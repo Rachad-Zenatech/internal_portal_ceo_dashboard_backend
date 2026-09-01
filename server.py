@@ -43,6 +43,7 @@ from tools.ceo_integration_router import router as ceo_integration_router
 from tools.approver_roles_router import router as approver_roles_router, ensure_approver_roles
 from tools.graph_router import router as graph_router
 from tools.workflow_assignment_router import router as workflow_assignment_router
+from tools.service_status_router import router as service_status_router
 
 # MCP tools
 from mcp_tools import register_all as register_mcp_tools, ask_gemini, ask_gemini_stream, sync_mcp_tools_to_vector_db
@@ -91,19 +92,30 @@ async def lifespan(app: FastAPI):
     sync_task.add_done_callback(
         partial(log_background_task_result, task_name="mcp-tool-sync")
     )
-    from tools.ceo_integration_router import poll_portal_health
-    portal_health_task = asyncio.create_task(poll_portal_health(), name="portal-health-poll")
-    portal_health_task.add_done_callback(
-        partial(log_background_task_result, task_name="portal-health-poll")
+    # Initialize Event-Driven MQTT Engine, Presence & Status Registry
+    from services.embedded_broker import ensure_mqtt_broker_running, stop_embedded_mqtt_broker
+    from services.mqtt_presence import MqttServicePresence
+    from services.service_status_registry import service_status_registry
+
+    await ensure_mqtt_broker_running()
+
+    ceo_presence = MqttServicePresence(
+        service_name=os.getenv("SERVICE_NAME", "ceo-api"),
+        instance_id=os.getenv("SERVICE_INSTANCE_ID", "ceo-api-01"),
     )
+    await ceo_presence.start()
+    await service_status_registry.start()
+
     logger.info("Application startup complete", extra={"event": "application_started"})
     try:
         yield
     finally:
         logger.info("Application shutdown beginning", extra={"event": "application_stopping"})
         sync_task.cancel()
-        portal_health_task.cancel()
-        await asyncio.gather(sync_task, portal_health_task, return_exceptions=True)
+        await ceo_presence.stop()
+        await service_status_registry.stop()
+        await stop_embedded_mqtt_broker()
+        await asyncio.gather(sync_task, return_exceptions=True)
         await close_pool()
         await close_admin_pool()
         loop.set_exception_handler(previous_exception_handler)
@@ -209,6 +221,7 @@ app.include_router(graph_router, prefix="/api", tags=["Microsoft Graph"], depend
 app.include_router(workflow_assignment_router, tags=["Workflow Assignments"], dependencies=authenticated)
 app.include_router(approver_roles_router, prefix="/api/v1/ceo", tags=["Approver Roles"], dependencies=authenticated)
 app.include_router(graph_router, prefix="/api/v1/ceo", tags=["Microsoft Graph"], dependencies=authenticated)
+app.include_router(service_status_router, tags=["Service Availability"])
 
 app.add_middleware(
     SessionMiddleware,

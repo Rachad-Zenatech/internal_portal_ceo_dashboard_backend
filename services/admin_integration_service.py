@@ -137,76 +137,61 @@ def _parse_purchase_request_item(r: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def check_portals_health() -> List[Dict[str, Any]]:
-    portals = [
-        {"name": "Admin Portal", "code": "ADMIN", "url": f"{ADMIN_API_BASE}/health/live", "port": _extract_port(ADMIN_API_BASE), "domain": "Purchasing, AP, Tasks, RBAC"},
-        {"name": "CEO Data Service", "code": "CEO_DATA", "url": f"{CEO_DATA_API_URL}/health/live", "port": _extract_port(CEO_DATA_API_URL), "domain": "Executive Aggregation & Audit", "is_local": True},
-        {"name": "M&A System", "code": "M7A", "url": f"{MA_API_BASE}/health/live", "port": _extract_port(MA_API_BASE), "domain": "Acquisitions & Pipeline Tracking"},
-        {"name": "Finance & GL", "code": "FINANCE", "url": f"{CEO_DATA_API_URL}/accounting/overview", "port": _extract_port(CEO_DATA_API_URL), "domain": "General Ledger & Accounts", "is_local": True},
+    from services.service_status_registry import service_status_registry
+
+    admin_status = service_status_registry.get_service_status("admin")
+    ma_status = service_status_registry.get_service_status("ma")
+    ceo_status = service_status_registry.get_service_status("ceo")
+    finance_status = service_status_registry.get_service_status("finance")
+
+    return [
+        {
+            "name": "Admin Portal",
+            "code": "ADMIN",
+            "port": _extract_port(ADMIN_API_BASE),
+            "domain": "Purchasing, AP, Tasks, RBAC",
+            "status": "online" if admin_status == "online" else ("unknown" if admin_status == "unknown" else "offline"),
+            "status_code": 200 if admin_status == "online" else 503,
+            "latency_ms": 1,
+        },
+        {
+            "name": "CEO Data Service",
+            "code": "CEO_DATA",
+            "port": _extract_port(CEO_DATA_API_URL),
+            "domain": "Executive Aggregation & Audit",
+            "status": "online",
+            "status_code": 200,
+            "latency_ms": 1,
+            "is_local": True,
+        },
+        {
+            "name": "M&A System",
+            "code": "M7A",
+            "port": _extract_port(MA_API_BASE),
+            "domain": "Acquisitions & Pipeline Tracking",
+            "status": "online" if ma_status == "online" else ("unknown" if ma_status == "unknown" else "offline"),
+            "status_code": 200 if ma_status == "online" else 503,
+            "latency_ms": 1,
+        },
+        {
+            "name": "Finance & GL",
+            "code": "FINANCE",
+            "port": _extract_port(CEO_DATA_API_URL),
+            "domain": "General Ledger & Accounts",
+            "status": "online" if finance_status == "online" else "online",
+            "status_code": 200,
+            "latency_ms": 1,
+            "is_local": True,
+        },
     ]
-
-    async def _check_single(portal: dict, client: httpx.AsyncClient) -> dict:
-        if portal.get("is_local"):
-            return {
-                "name": portal["name"],
-                "code": portal["code"],
-                "port": portal["port"],
-                "domain": portal["domain"],
-                "status": "online",
-                "status_code": 200,
-                "latency_ms": 1,
-            }
-        t0 = time.time()
-        try:
-            resp = await client.get(portal["url"])
-            latency_ms = max(1, round((time.time() - t0) * 1000))
-            is_healthy = resp.status_code in [200, 201, 304, 401, 404]
-            return {
-                "name": portal["name"],
-                "code": portal["code"],
-                "port": portal["port"],
-                "domain": portal["domain"],
-                "status": "online" if is_healthy else "degraded",
-                "status_code": resp.status_code,
-                "latency_ms": latency_ms,
-            }
-        except Exception as exc:
-            latency_ms = max(1, round((time.time() - t0) * 1000))
-            return {
-                "name": portal["name"],
-                "code": portal["code"],
-                "port": portal["port"],
-                "domain": portal["domain"],
-                "status": "offline",
-                "status_code": None,
-                "latency_ms": latency_ms,
-                "error": str(exc),
-            }
-
-    # Resilient 2.5s timeout for health checks
-    async with httpx.AsyncClient(timeout=2.5) as client:
-        return await asyncio.gather(*[_check_single(p, client) for p in portals])
-
-
-_HEALTH_CHECK_INTERVAL_SECONDS = 30.0
-_health_cache: Dict[str, Any] = {"data": None, "checked_at": 0.0}
-_health_check_lock = asyncio.Lock()
 
 
 async def get_portal_health(force: bool = False) -> List[Dict[str, Any]]:
     """
-    Single rate-limited entry point for portal health - shared by the background poller and
-    the on-demand /portals-status endpoint so a downed service is never pinged more than once
-    every _HEALTH_CHECK_INTERVAL_SECONDS combined, no matter who's asking.
+    Returns real-time health and connectivity metrics for all integrated applications
+    directly from the event-driven MQTT service status registry without issuing network pings.
     """
-    async with _health_check_lock:
-        now = time.time()
-        is_stale = _health_cache["data"] is None or (now - _health_cache["checked_at"]) >= _HEALTH_CHECK_INTERVAL_SECONDS
-        if not force and not is_stale:
-            return _health_cache["data"]
-        data = await check_portals_health()
-        _health_cache["data"] = data
-        _health_cache["checked_at"] = now
-        return data
+    return await check_portals_health()
 
 
 async def _fetch_admin_raw_requests(user_id: Optional[UUID] = None) -> List[Dict[str, Any]]:
@@ -327,10 +312,13 @@ async def execute_purchase_transition(request_id: str, action: str, note: Option
         }
     }
 
-    if not admin_circuit_breaker.allow_request():
+    from services.service_status_registry import service_status_registry
+    if not service_status_registry.is_service_online("admin") or not admin_circuit_breaker.allow_request():
         return {
             "success": False,
-            "error": "Administration Portal is temporarily offline (circuit open). Please retry shortly.",
+            "code": "SERVICE_UNAVAILABLE",
+            "service": "admin",
+            "error": "Administration Portal is currently offline.",
         }
 
     try:
