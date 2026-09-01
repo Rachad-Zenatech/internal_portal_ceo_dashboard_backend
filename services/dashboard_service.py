@@ -67,24 +67,8 @@ async def _get_account_type_totals(
         except Exception as exc:
             logger.warning(f"GL query error: {exc}")
 
-        # Fallback using purchase orders and invoices if gl_entry_lines not present
-        try:
-            po_total = await conn.fetchval("SELECT COALESCE(SUM(total_amount), 0) FROM purchase_orders") or 0
-            inv_total = await conn.fetchval("SELECT COALESCE(SUM(amount), 0) FROM invoices") or 0
-            return [
-                {"account_type": "Bank", "total_amount": 250000.0},
-                {"account_type": "Accounts receivable (A/R)", "total_amount": 120000.0},
-                {"account_type": "Accounts payable (A/P)", "total_amount": float(inv_total)},
-                {"account_type": "Expenses", "total_amount": float(po_total)},
-                {"account_type": "Income", "total_amount": 480000.0},
-            ]
-        except Exception:
-            return [
-                {"account_type": "Bank", "total_amount": 250000.0},
-                {"account_type": "Income", "total_amount": 480000.0},
-                {"account_type": "Expenses", "total_amount": 185000.0},
-                {"account_type": "Accounts payable (A/P)", "total_amount": 45000.0},
-            ]
+        # Safe empty default if gl_entry_lines is not yet populated or offline
+        return []
 
 
 def _summary_from_account_totals(rows):
@@ -105,23 +89,15 @@ def _summary_from_account_totals(rows):
         elif account_type in ["Expenses", "Cost of Goods Sold", "Other Expense"]:
             expenses += abs(amount)
             
-    # Default non-zero values for realistic executive view if database is empty
-    if metrics["assets"] == 0 and income == 0:
-        metrics["assets"] = 1450000.0
-        metrics["liabilities"] = 320000.0
-        metrics["equity"] = 1130000.0
-        income = 580000.0
-        expenses = 210000.0
-
     return {
         "assets": metrics["assets"],
-        "assetsChange": 2.1,
+        "assetsChange": 0.0,
         "liabilities": metrics["liabilities"],
-        "liabilitiesChange": 1.2,
+        "liabilitiesChange": 0.0,
         "equity": metrics["equity"],
-        "equityChange": 0.8,
+        "equityChange": 0.0,
         "netIncome": income - expenses,
-        "netIncomeChange": 5.4,
+        "netIncomeChange": 0.0,
     }
 
 
@@ -149,14 +125,7 @@ def _distribution_from_account_totals(rows):
             
     total = sum(categories.values())
     if total == 0:
-        categories = {
-            "Assets": 1450000.0,
-            "Liabilities": 320000.0,
-            "Equity": 1130000.0,
-            "Revenue": 580000.0,
-            "Expenses": 210000.0,
-        }
-        total = sum(categories.values())
+        return []
 
     return [
         {"name": name, "value": value, "percentage": f"{round((value / total) * 100)}%"}
@@ -230,15 +199,8 @@ async def get_revenue_vs_expenses(period: str = "monthly", company_id: int | Non
         except Exception as exc:
             logger.warning(f"Revenue/Expense query error: {exc}")
 
-    # Fallback period data for Executive Dashboard
-    return [
-        {"month": "Jan 2026", "revenue": 45000, "expenses": 28000, "date": "Jan 2026"},
-        {"month": "Feb 2026", "revenue": 52000, "expenses": 31000, "date": "Feb 2026"},
-        {"month": "Mar 2026", "revenue": 61000, "expenses": 34000, "date": "Mar 2026"},
-        {"month": "Apr 2026", "revenue": 58000, "expenses": 32000, "date": "Apr 2026"},
-        {"month": "May 2026", "revenue": 72000, "expenses": 38000, "date": "May 2026"},
-        {"month": "Jun 2026", "revenue": 84000, "expenses": 42000, "date": "Jun 2026"},
-    ]
+    # Return empty list until data exists
+    return []
 
 
 async def get_bank_account_balances(company_id: int | None = None, start_date: str | None = None, end_date: str | None = None, _connection=None):
@@ -295,11 +257,8 @@ async def get_bank_account_balances(company_id: int | None = None, start_date: s
         except Exception as exc:
             logger.warning(f"Bank query error: {exc}")
 
-    return [
-        {"account": "JPMorgan Chase - Operating (...4421)", "beginning": 420000.0, "ending": 485000.0},
-        {"account": "Silicon Valley Bank - Payroll (...8891)", "beginning": 150000.0, "ending": 162000.0},
-        {"account": "Bank of America - Treasury Reserve (...1024)", "beginning": 800000.0, "ending": 803000.0},
-    ]
+    # Return empty list until bank account records exist
+    return []
 
 
 async def get_account_type_distribution(company_id: int | None = None, start_date: str | None = None, end_date: str | None = None):
@@ -340,12 +299,8 @@ async def get_recent_transactions(company_id: int | None = None, start_date: str
         except Exception as exc:
             logger.debug(f"Recent transactions query: {exc}")
 
-    return [
-        {"id": "TXN-8821", "description": "Cloud Infrastructure (AWS)", "amount": 14200.0, "type": "Expense", "status": "Completed", "date": "2026-08-19"},
-        {"id": "TXN-8820", "description": "Enterprise SaaS Licensing", "amount": 25000.0, "type": "Expense", "status": "Completed", "date": "2026-08-18"},
-        {"id": "TXN-8819", "description": "Client Subscription ARR", "amount": 85000.0, "type": "Income", "status": "Settled", "date": "2026-08-17"},
-        {"id": "TXN-8818", "description": "Hardware Engineering Lab", "amount": 9500.0, "type": "Expense", "status": "Pending", "date": "2026-08-16"},
-    ]
+    # Return empty list until real transaction records exist
+    return []
 
 
 async def get_dashboard_overview(
