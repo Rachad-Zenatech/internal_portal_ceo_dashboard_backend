@@ -1,4 +1,4 @@
-﻿# Claude Project Skill
+# Claude Project Skill
 
 Lean rules for the enterprise backend workspace.
 
@@ -32,4 +32,5 @@ Lean rules for the enterprise backend workspace.
 - Frontend: run `npm run build` after TypeScript or UI contract changes.
 - Run `git diff --check` before reporting completion.
 - LLM-created task-specific test, probe, fixture, snapshot, and scratch files are temporary by default. Run them, record the result, and remove them before finishing.
+- Remove all test scripts and any non‑production check scripts after testing or verification is complete.
 - Never remove pre-existing repository tests as cleanup. Keep a new test only when the user explicitly requests a permanent regression test.
