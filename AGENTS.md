@@ -1,4 +1,4 @@
-﻿# Codex Project Skill
+# Codex Project Skill
 
 Lean rules for the enterprise backend workspace.
 
@@ -31,4 +31,6 @@ Lean rules for the enterprise backend workspace.
 - Frontend contract/UI changes: run `npm run build` in the frontend workspace.
 - Run `git diff --check` on touched files.
 - LLM-created task-specific test, probe, fixture, snapshot, and scratch files are temporary by default. Run them, record the result, and remove them before finishing.
-- Never remove or rewrite pre-existing repository tests as cleanup. Keep a new test only when the user explicitly requests a permanent regression test.
+- Remove all test scripts and any non‑production check scripts after testing or verification is complete.
+- Remove all seeding scripts (e.g., scripts that insert sample data) after they have been executed.
+
