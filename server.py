@@ -91,11 +91,7 @@ async def lifespan(app: FastAPI):
     sync_task.add_done_callback(
         partial(log_background_task_result, task_name="mcp-tool-sync")
     )
-    from tools.ceo_integration_router import poll_and_sync_admin_approvals, poll_portal_health
-    sync_approvals_task = asyncio.create_task(poll_and_sync_admin_approvals(), name="approval-and-ma-sync")
-    sync_approvals_task.add_done_callback(
-        partial(log_background_task_result, task_name="approval-and-ma-sync")
-    )
+    from tools.ceo_integration_router import poll_portal_health
     portal_health_task = asyncio.create_task(poll_portal_health(), name="portal-health-poll")
     portal_health_task.add_done_callback(
         partial(log_background_task_result, task_name="portal-health-poll")
@@ -106,9 +102,8 @@ async def lifespan(app: FastAPI):
     finally:
         logger.info("Application shutdown beginning", extra={"event": "application_stopping"})
         sync_task.cancel()
-        sync_approvals_task.cancel()
         portal_health_task.cancel()
-        await asyncio.gather(sync_task, sync_approvals_task, portal_health_task, return_exceptions=True)
+        await asyncio.gather(sync_task, portal_health_task, return_exceptions=True)
         await close_pool()
         await close_admin_pool()
         loop.set_exception_handler(previous_exception_handler)

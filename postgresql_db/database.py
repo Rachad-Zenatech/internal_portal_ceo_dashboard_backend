@@ -26,10 +26,10 @@ async def create_pool():
                     dsn=os.environ["DATABASE_URL"],
                     ssl=use_ssl,
                     min_size=1,
-                    max_size=10,
+                    max_size=3,
                     timeout=15.0,
                     command_timeout=30.0,
-                    max_inactive_connection_lifetime=15.0,
+                    max_inactive_connection_lifetime=10.0,
                     statement_cache_size=0,
                     server_settings={"application_name": "ceo_dashboard"},
                 )
@@ -64,10 +64,10 @@ async def create_admin_pool():
                     dsn=admin_dsn,
                     ssl=use_ssl,
                     min_size=1,
-                    max_size=5,
+                    max_size=2,
                     timeout=15.0,
                     command_timeout=30.0,
-                    max_inactive_connection_lifetime=15.0,
+                    max_inactive_connection_lifetime=10.0,
                     statement_cache_size=0,
                 )
                 break

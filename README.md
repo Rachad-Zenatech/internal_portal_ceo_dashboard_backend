@@ -26,6 +26,62 @@ Enterprise backend server for the **ZenaTech CEO Dashboard**, providing REST API
 
 ---
 
+## Event-Driven Architecture & Real-Time Sync
+
+The CEO Dashboard uses an **Event-Driven Architecture (Observer Pattern)** combined with **Server-Sent Events (SSE)** for real-time executive updates without continuous polling:
+
+```
+                      EVENT-DRIVEN ARCHITECTURE
+
+ Admin Portal ────────┐
+ (e.g. PR Created)    │  HTTP / Webhook / Event Bus
+                      ├── POST /api/v1/ceo/events
+ M&A System ──────────┤
+ (e.g. LOI Accepted)  │
+                      ↓
+              ┌─────────────────┐
+              │   CEO Backend   │ ── Immutable Audit Log (PostgreSQL)
+              └─────────────────┘
+                      │
+                      │ Real-time SSE Push
+                      │ GET /api/v1/ceo/events/stream
+                      ↓
+              ┌─────────────────┐
+              │  CEO Dashboard  │ (Zero-polling live update)
+              └─────────────────┘
+```
+
+### Core Principles
+
+1. **State Changes via Events**: Source systems (Admin Portal, M&A System) publish events when state changes happen (`approval.created`, `approval.approved`, `m&a.loi_accepted`). The CEO Dashboard waits passively on the SSE stream rather than continuously polling downstream databases.
+2. **Polling Strictly for Health & Heartbeats**: Periodic lightweight health checks (every 30s) are used only to detect service crashes or network drops where an event cannot be published.
+3. **Browser Resilience**: The frontend maintains a single global SSE connection manager with exponential backoff (2s → 4s → 8s → 16s → 30s max) and ±20% jitter. SSE outages never block standard REST API data loading.
+
+### Event Ingestion Endpoint (For Admin & External Services)
+
+External microservices publish business events to the CEO Dashboard via:
+
+```http
+POST /api/v1/ceo/events
+Content-Type: application/json
+
+{
+  "event_type": "PURCHASE_REQUEST_CREATED",
+  "source": "admin",
+  "entity_id": "PR-10523",
+  "data": {
+    "amount": 25000.00,
+    "department": "Engineering",
+    "requester": "Jane Doe",
+    "description": "GPU Server Allocation"
+  }
+}
+```
+
+The CEO Backend ingests the event, writes an audit record to `ceo_events`, and instantly broadcasts it to all active dashboard clients via SSE (`GET /api/v1/ceo/events/stream`).
+
+---
+
 ## Environment Configuration
 
 Ensure `.env` in the backend root contains:
@@ -64,6 +120,29 @@ SESSION_SECRET=your_secret_key
 ```
 
 ---
+
+## Installation
+
+1. Clone the repository
+   ```bash
+   git clone <repo-url>
+   cd internal_portal_ceo_dashboard_backend
+   ```
+
+2. Create and activate a virtual environment
+   ```bash
+   # Linux / WSL
+   python -m venv venv
+   source venv/bin/activate
+
+   # Windows PowerShell
+   .\\venv\\Scripts\\activate
+   ```
+
+3. Install dependencies
+   ```bash
+   pip install -r requirements.txt
+   ```
 
 ## Running the Development Servers
 

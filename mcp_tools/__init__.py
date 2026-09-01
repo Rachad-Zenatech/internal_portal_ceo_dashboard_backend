@@ -69,13 +69,23 @@ ALL_TOOLS = [
 ]
 
 # Gemini setup
-gemini_client = genai.Client(
-    api_key=os.getenv("GEMINI_API_KEY")
-)
+gemini_client = None
+_gemini_api_key = os.getenv("GEMINI_API_KEY")
+if _gemini_api_key:
+    try:
+        gemini_client = genai.Client(api_key=_gemini_api_key)
+    except Exception as e:
+        logger.warning(f"Could not initialize Gemini Client: {e}")
 
 
 def _get_gemini_client():
-    return genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        return None
+    try:
+        return genai.Client(api_key=api_key)
+    except Exception:
+        return None
 
 def _normalize_ai_review_model_name(name: str) -> str:
     return name.strip().lower().replace(" ", "-")

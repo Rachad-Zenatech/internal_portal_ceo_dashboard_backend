@@ -32,24 +32,32 @@ JWT_ALGORITHM = "HS256"
 JWT_ISSUER = "zenatech-internal-portal"
 
 
+_service_token_cache: Dict[str, Tuple[str, float]] = {}
+
+
 async def _generate_service_token(user_id: Optional[UUID] = None) -> str:
-    uid = user_id or UUID("998285f2-cff3-46dd-887b-0bf17b255d5f")
+    uid_str = str(user_id or "998285f2-cff3-46dd-887b-0bf17b255d5f")
+    now_ts = time.time()
+
+    # Return cached token if valid for at least 5 more minutes
+    cached = _service_token_cache.get(uid_str)
+    if cached and cached[1] > now_ts + 300:
+        return cached[0]
+
     now = datetime.datetime.now(datetime.timezone.utc)
-    try:
-        from postgresql_db.database import execute
-        await execute("UPDATE users SET last_activity_at = now() WHERE id = $1", uid)
-    except Exception:
-        pass
+    exp_dt = now + datetime.timedelta(hours=2)
     payload = {
-        "sub": str(uid),
+        "sub": uid_str,
         "is_super_admin": True,
         "is_service_token": True,
         "iss": JWT_ISSUER,
         "iat": int(now.timestamp()),
         "jti": secrets.token_urlsafe(16),
-        "exp": int((now + datetime.timedelta(hours=2)).timestamp()),
+        "exp": int(exp_dt.timestamp()),
     }
-    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    _service_token_cache[uid_str] = (token, exp_dt.timestamp())
+    return token
 
 
 def _extract_port(url_str: str) -> int:
@@ -174,8 +182,8 @@ async def check_portals_health() -> List[Dict[str, Any]]:
                 "error": str(exc),
             }
 
-    # Ultra-fast 0.6s timeout so offline services never block the backend or event loop
-    async with httpx.AsyncClient(timeout=0.6) as client:
+    # Resilient 2.5s timeout for health checks
+    async with httpx.AsyncClient(timeout=2.5) as client:
         return await asyncio.gather(*[_check_single(p, client) for p in portals])
 
 

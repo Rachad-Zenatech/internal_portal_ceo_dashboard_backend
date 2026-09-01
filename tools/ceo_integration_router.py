@@ -28,13 +28,23 @@ _event_listeners: Set[asyncio.Queue] = set()
 
 async def broadcast_event(event_dict: dict):
     """
-    Broadcasts real-time events to all connected SSE clients.
+    Broadcasts real-time events to all connected SSE clients with bounded queue protection.
     """
+    dead_queues = []
     for q in list(_event_listeners):
         try:
             q.put_nowait(event_dict)
+        except asyncio.QueueFull:
+            try:
+                # Evict oldest event to prevent queue deadlock on slow consumers
+                q.get_nowait()
+                q.put_nowait(event_dict)
+            except Exception:
+                dead_queues.append(q)
         except Exception:
-            pass
+            dead_queues.append(q)
+    for dq in dead_queues:
+        _event_listeners.discard(dq)
 
 
 _CIRCUIT_DISPLAY_NAMES = {
@@ -179,72 +189,12 @@ async def poll_portal_health():
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "portals": health,
                 })
+        except asyncio.CancelledError:
+            logger.info("Portal health poller cancelled; shutting down worker")
+            break
         except Exception as exc:
             logger.debug(f"Portal health poll note: {exc}")
         await asyncio.sleep(30.0)
-
-
-async def poll_and_sync_admin_approvals():
-    """
-    Background worker loop that periodically synchronizes pending purchase requests and M&A deals
-    only when state actually changes, and broadcasts updates over SSE without blocking.
-    """
-    global _last_known_pending_hash, _last_known_ma_loi_hash
-    await asyncio.sleep(2.0)
-    from services.admin_integration_service import get_ma_pipeline_tasks
-    from services.notification_service import sync_approval_notifications, sync_ma_loi_accepted_notifications
-    from services.integration_resilience import admin_circuit_breaker, ma_circuit_breaker, CircuitState
-
-    while True:
-        try:
-            # 1. Check Admin Portal Approvals
-            if admin_circuit_breaker.state != CircuitState.OPEN:
-                reqs = await get_pending_purchase_requests()
-                if reqs is not None and isinstance(reqs, list):
-                    import hashlib
-                    fingerprint = hashlib.md5(
-                        json.dumps([(r.get("id"), r.get("status"), r.get("amount")) for r in reqs], sort_keys=True).encode()
-                    ).hexdigest()
-
-                    if _last_known_pending_hash is not None and fingerprint != _last_known_pending_hash:
-                        await sync_approval_notifications(reqs)
-                        await broadcast_event({
-                            "event_type": "PURCHASE_REQUESTS_UPDATED",
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                            "count": len(reqs),
-                        })
-                    elif _last_known_pending_hash is None and reqs:
-                        await sync_approval_notifications(reqs)
-
-                    _last_known_pending_hash = fingerprint
-
-            # 2. Check M&A LOI Accepted deals
-            if ma_circuit_breaker.state != CircuitState.OPEN:
-                ma_tasks = await get_ma_pipeline_tasks(limit=100, skip=0)
-                if ma_tasks and isinstance(ma_tasks, list):
-                    accepted_loi_tasks = [
-                        t for t in ma_tasks
-                        if (t.get("priority_name") or "").lower() in ["loi sent - accepted", "loi accepted"]
-                    ]
-                    import hashlib
-                    ma_fingerprint = hashlib.md5(
-                        json.dumps([(t.get("id"), t.get("company_name"), t.get("revenue")) for t in accepted_loi_tasks], sort_keys=True).encode()
-                    ).hexdigest()
-
-                    if _last_known_ma_loi_hash is not None and ma_fingerprint != _last_known_ma_loi_hash:
-                        await sync_ma_loi_accepted_notifications(accepted_loi_tasks)
-                        await broadcast_event({
-                            "event_type": "M&A_LOI_ACCEPTED_UPDATED",
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                            "count": len(accepted_loi_tasks),
-                        })
-                    elif _last_known_ma_loi_hash is None and accepted_loi_tasks:
-                        await sync_ma_loi_accepted_notifications(accepted_loi_tasks)
-
-                    _last_known_ma_loi_hash = ma_fingerprint
-        except Exception as exc:
-            logger.debug(f"Background sync iteration note: {exc}")
-        await asyncio.sleep(12.0)
 
 
 @router.get("/portals-status")
@@ -411,6 +361,28 @@ async def publish_event(payload: CeoEventPayload):
                 json.dumps(payload.data),
             )
 
+        # Trigger domain-specific observer notifications asynchronously
+        event_type_upper = payload.event_type.upper()
+        if event_type_upper.startswith("PURCHASE_") or "APPROVAL" in event_type_upper:
+            try:
+                from services.notification_service import sync_approval_notifications
+                reqs = await get_pending_purchase_requests()
+                if reqs:
+                    await sync_approval_notifications(reqs)
+            except Exception as e:
+                logger.warning(f"Failed to sync approval notifications on event: {e}")
+        elif event_type_upper.startswith("MA_") or "LOI" in event_type_upper:
+            try:
+                from services.notification_service import sync_ma_loi_accepted_notifications
+                from services.admin_integration_service import get_ma_pipeline_tasks
+                ma_tasks = await get_ma_pipeline_tasks(limit=100, skip=0)
+                if ma_tasks:
+                    accepted_loi = [t for t in ma_tasks if (t.get("priority_name") or "").lower() in ["loi sent - accepted", "loi accepted"]]
+                    if accepted_loi:
+                        await sync_ma_loi_accepted_notifications(accepted_loi)
+            except Exception as e:
+                logger.warning(f"Failed to sync M&A notifications on event: {e}")
+
         # Broadcast event to all SSE clients instantly
         await broadcast_event({
             "event_type": payload.event_type,
@@ -487,6 +459,7 @@ async def get_ma_events_endpoint(limit: int = Query(50, ge=1, le=200)):
     return await get_ma_events(limit=limit)
 
 
+@router.get("/ma/pipeline/tasks")
 @router.get("/ma/pipeline")
 async def get_ma_pipeline_endpoint(
     limit: int = Query(50, ge=1, le=200),

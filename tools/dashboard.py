@@ -15,6 +15,7 @@ router = APIRouter()
 async def overview(period: str = "monthly", company_id: int | None = None, start_date: str | None = None, end_date: str | None = None):
     return await get_dashboard_overview(period, company_id, start_date, end_date)
 
+@router.get("/summary-metrics")
 @router.get("/summary")
 async def summary(company_id: int | None = None, start_date: str | None = None, end_date: str | None = None):
     try:
@@ -22,6 +23,7 @@ async def summary(company_id: int | None = None, start_date: str | None = None, 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/revenue-vs-expenses")
 @router.get("/revenue-expense")
 async def revenue_expense(period: str = "monthly", company_id: int | None = None, start_date: str | None = None, end_date: str | None = None):
     try:
@@ -29,6 +31,7 @@ async def revenue_expense(period: str = "monthly", company_id: int | None = None
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/bank-account-balances")
 @router.get("/bank-balances")
 async def bank_balances(company_id: int | None = None, start_date: str | None = None, end_date: str | None = None):
     try:
