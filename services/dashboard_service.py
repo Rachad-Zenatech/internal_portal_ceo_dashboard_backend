@@ -69,8 +69,23 @@ async def _get_account_type_totals(
 
         # Fallback using purchase orders and invoices if gl_entry_lines not present
         try:
-            po_total = await conn.fetchval("SELECT COALESCE(SUM(total_amount), 0) FROM purchase_orders") or 0
-            inv_total = await conn.fetchval("SELECT COALESCE(SUM(amount), 0) FROM invoices") or 0
+            # Verify tables exist
+            has_po = await conn.fetchval("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables
+                    WHERE table_schema = 'public' AND table_name = 'purchase_orders'
+                );""")
+            has_inv = await conn.fetchval("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables
+                    WHERE table_schema = 'public' AND table_name = 'invoices'
+                );""")
+            po_total = 0
+            inv_total = 0
+            if has_po:
+                po_total = await conn.fetchval("SELECT COALESCE(SUM(total_amount), 0) FROM purchase_orders") or 0
+            if has_inv:
+                inv_total = await conn.fetchval("SELECT COALESCE(SUM(amount), 0) FROM invoices") or 0
             return [
                 {"account_type": "Bank", "total_amount": 250000.0},
                 {"account_type": "Accounts receivable (A/R)", "total_amount": 120000.0},
