@@ -59,7 +59,7 @@ async def lifespan(app: FastAPI):
     try:
         await create_pool()
         await create_admin_pool()
-        # Initialize CEO Events and Audit Tables per Proposal 1
+        # Initialize CEO Events, Audit, and Cross-Service Persistence Schema
         async with get_pool().acquire() as conn:
             await conn.execute('''
                 CREATE TABLE IF NOT EXISTS ceo_events (
@@ -84,6 +84,12 @@ async def lifespan(app: FastAPI):
                 );
             ''')
         await ensure_approver_roles()
+
+        from postgresql_db.cross_service_schema import ensure_cross_service_schema
+        await ensure_cross_service_schema()
+
+        # Initialize Connectors package
+        import services.connectors
     except Exception:
         logger.exception("Application startup failed", extra={"event": "application_startup_failed"})
         raise
@@ -106,12 +112,27 @@ async def lifespan(app: FastAPI):
     await ceo_presence.start()
     await service_status_registry.start()
 
+    # Initialize Asynchronous Cross-Service Messaging & Workers
+    from services.rabbitmq_service import rabbitmq_manager
+    from services.outbox_publisher import outbox_publisher
+    from services.result_consumer import result_consumer
+    from services.admin_command_processor import admin_command_processor
+    from services.ma_command_processor import ma_command_processor
+
+    await rabbitmq_manager.connect()
+    outbox_publisher.start()
+    await result_consumer.start()
+    await admin_command_processor.start()
+    await ma_command_processor.start()
+
     logger.info("Application startup complete", extra={"event": "application_started"})
     try:
         yield
     finally:
         logger.info("Application shutdown beginning", extra={"event": "application_stopping"})
         sync_task.cancel()
+        await outbox_publisher.stop()
+        await rabbitmq_manager.close()
         await ceo_presence.stop()
         await service_status_registry.stop()
         await stop_embedded_mqtt_broker()
@@ -120,6 +141,7 @@ async def lifespan(app: FastAPI):
         await close_admin_pool()
         loop.set_exception_handler(previous_exception_handler)
         logger.info("Application shutdown complete", extra={"event": "application_stopped"})
+
 
 class MessageItem(BaseModel):
     role: str = Field(min_length=1, max_length=32)

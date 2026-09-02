@@ -207,73 +207,72 @@ async def get_approval_request_detail(request_id: str):
     return detail
 
 
-@router.post("/approvals/{request_id}/action")
+@router.post("/approvals/{request_id}/action", status_code=202)
 async def execute_approval_action(
     request_id: str,
     payload: CeoActionPayload,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
+    user_id: Optional[UUID] = Depends(get_current_user_id_dependency),
 ):
     """
-    Dispatches a synchronous command to Admin Portal to approve or reject a purchase request.
-    Records an immutable audit log entry per Section 13 of the Integration Architecture.
+    Dispatches a durable asynchronous command to approve, reject, or cancel a purchase request.
+    Returns 202 Accepted with tracking command_id.
     """
+    from services.command_service import command_service
+    from services.connectors.base_connector import UserContext
+
     action_type = payload.action.upper()
     if action_type not in ["APPROVE", "REJECT", "CANCEL"]:
         raise HTTPException(status_code=400, detail="Invalid action. Must be APPROVE, REJECT, or CANCEL.")
 
-    res = await execute_purchase_transition(
-        request_id=request_id,
-        action=action_type,
-        note=payload.note,
+    cmd_type = f"{action_type}_REQUEST"
+    user_ctx = UserContext(
+        user_id=str(user_id) if user_id else "ceo-executive",
+        display_name="CEO Executive",
     )
 
-    # Record Audit Log
-    try:
-        async with get_conn() as conn:
-            await conn.execute(
-                """
-                INSERT INTO ceo_audit_logs (action, source_application, target_application, target_entity, requested_by, result, details, created_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-                """,
-                f"PURCHASE_{action_type}",
-                "ceo-dashboard",
-                "admin",
-                request_id,
-                "CEO Executive",
-                "SUCCESS" if res.get("success") else "FAILED",
-                json.dumps({"note": payload.note, "response": res}),
-            )
-    except Exception as exc:
-        logger.warning(f"Failed to record CEO audit log: {exc}")
+    result = await command_service.submit_command(
+        target_service="administration",
+        resource_type="request",
+        resource_id=request_id,
+        command_type=cmd_type,
+        payload={"action": action_type, "note": payload.note},
+        user=user_ctx,
+        idempotency_key=idempotency_key,
+    )
 
-    if not res.get("success"):
-        raise HTTPException(status_code=400, detail=res.get("error", "Action failed"))
+    return result
 
-    # Also log an event for the stream
-    try:
-        async with get_conn() as conn:
-            await conn.execute(
-                """
-                INSERT INTO ceo_events (event_type, source, entity_id, data, created_at)
-                VALUES ($1, $2, $3, $4, NOW())
-                """,
-                f"PURCHASE_{action_type}D",
-                "ceo-dashboard",
-                request_id,
-                json.dumps({"note": payload.note, "actor": "CEO Executive"}),
-            )
-    except Exception as exc:
-        logger.warning(f"Failed to record CEO event: {exc}")
 
-    # Broadcast event to all SSE clients instantly
-    await broadcast_event({
-        "event_type": f"PURCHASE_{action_type}D",
-        "entity_id": request_id,
-        "source": "ceo-dashboard",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "data": {"note": payload.note, "actor": "CEO Executive"},
-    })
+@router.get("/commands/{command_id}/status")
+async def get_command_status_endpoint(command_id: str):
+    """
+    Returns the real-time tracking status of any cross-service durable command.
+    """
+    from services.command_service import command_service
+    status = await command_service.get_command_status(command_id)
+    if not status:
+        raise HTTPException(status_code=404, detail="Command not found")
+    return status
 
-    return res
+
+@router.post("/commands/{command_id}/retry", status_code=202)
+async def retry_command_endpoint(
+    command_id: str,
+    user_id: Optional[UUID] = Depends(get_current_user_id_dependency),
+):
+    """
+    Retries an eligible failed cross-service command.
+    """
+    from services.command_service import command_service
+    from services.connectors.base_connector import UserContext
+
+    user_ctx = UserContext(
+        user_id=str(user_id) if user_id else "ceo-executive",
+        display_name="CEO Executive",
+    )
+    return await command_service.retry_command(command_id, user_ctx)
+
 
 
 @router.get("/events")
@@ -331,6 +330,12 @@ async def publish_event(payload: CeoEventPayload):
         event_type_upper = payload.event_type.upper()
         if event_type_upper.startswith("PURCHASE_") or "APPROVAL" in event_type_upper:
             try:
+                from services.admin_integration_service import sync_admin_records_from_source
+                asyncio.create_task(sync_admin_records_from_source())
+            except Exception as e:
+                logger.warning(f"Failed to trigger sync_admin_records_from_source: {e}")
+
+            try:
                 from services.notification_service import sync_approval_notifications
                 reqs = await get_pending_purchase_requests()
                 if reqs:
@@ -348,6 +353,20 @@ async def publish_event(payload: CeoEventPayload):
                         await sync_ma_loi_accepted_notifications(accepted_loi)
             except Exception as e:
                 logger.warning(f"Failed to sync M&A notifications on event: {e}")
+
+        # Broadcast event to all WebSocket clients instantly for real-time frontend updates
+        ws_msg = {
+            "eventType": payload.event_type,
+            "service": payload.source,
+            "entityId": payload.entity_id,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "data": payload.data,
+        }
+        try:
+            from tools.service_status_router import ws_manager
+            asyncio.create_task(ws_manager.broadcast(ws_msg))
+        except Exception as ws_err:
+            logger.debug(f"WebSocket broadcast error: {ws_err}")
 
         # Broadcast event to all SSE clients instantly
         await broadcast_event({
@@ -437,3 +456,70 @@ async def get_ma_pipeline_endpoint(
     """
     from services.admin_integration_service import get_ma_pipeline_tasks
     return await get_ma_pipeline_tasks(limit=limit, skip=skip, loi_accepted_only=loi_accepted_only)
+
+
+class MaDealTransitionPayload(BaseModel):
+    stage: str
+    note: Optional[str] = None
+
+
+@router.post("/ma/deals/{deal_id}/transition", status_code=202)
+async def transition_ma_deal_endpoint(
+    deal_id: str,
+    payload: MaDealTransitionPayload,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
+    user_id: Optional[UUID] = Depends(get_current_user_id_dependency),
+):
+    """
+    Dispatches a durable asynchronous command to transition an M&A deal to a new stage.
+    """
+    from services.command_service import command_service
+    from services.connectors.base_connector import UserContext
+
+    user_ctx = UserContext(
+        user_id=str(user_id) if user_id else "ceo-executive",
+        display_name="CEO Executive",
+    )
+
+    return await command_service.submit_command(
+        target_service="ma",
+        resource_type="deal",
+        resource_id=deal_id,
+        command_type="TRANSITION_DEAL_STAGE",
+        payload={"deal_id": deal_id, "stage": payload.stage, "note": payload.note},
+        user=user_ctx,
+        idempotency_key=idempotency_key,
+    )
+
+
+class MaDealUpdatePayload(BaseModel):
+    updates: Dict[str, Any] = Field(default_factory=dict)
+
+
+@router.put("/ma/deals/{deal_id}", status_code=202)
+async def update_ma_deal_endpoint(
+    deal_id: str,
+    payload: MaDealUpdatePayload,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
+    user_id: Optional[UUID] = Depends(get_current_user_id_dependency),
+):
+    """
+    Dispatches a durable asynchronous command to update an M&A deal's properties.
+    """
+    from services.command_service import command_service
+    from services.connectors.base_connector import UserContext
+
+    user_ctx = UserContext(
+        user_id=str(user_id) if user_id else "ceo-executive",
+        display_name="CEO Executive",
+    )
+
+    return await command_service.submit_command(
+        target_service="ma",
+        resource_type="deal",
+        resource_id=deal_id,
+        command_type="UPDATE_DEAL",
+        payload={"deal_id": deal_id, "updates": payload.updates},
+        user=user_ctx,
+        idempotency_key=idempotency_key,
+    )

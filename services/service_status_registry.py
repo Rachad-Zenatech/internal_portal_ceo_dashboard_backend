@@ -94,19 +94,81 @@ class ServiceStatusRegistry:
 
     def get_service_status(self, service_name: str) -> str:
         """Returns 'online', 'offline', or 'unknown'."""
-        if not self._connected:
-            # If backend loses broker connection, remote status is unknown
-            # However local CEO services can still report online
-            normalized = normalize_service_name(service_name)
-            if normalized == "ceo" or normalized == "finance":
-                return "online"
-            return "unknown"
-
         normalized = normalize_service_name(service_name)
+        if normalized == "ceo" or normalized == "finance":
+            return "online"
         return self._effective_status.get(normalized, "unknown")
+
 
     def is_service_online(self, service_name: str) -> bool:
         return self.get_service_status(service_name) == "online"
+
+    async def wait_until_online(self, service_name: str, timeout: Optional[float] = None) -> bool:
+        """
+        Asynchronously waits until the target service is online (via MQTT presence or HTTP probe).
+        """
+        import httpx
+        norm = normalize_service_name(service_name)
+
+        # 1. Immediate check
+        if self.is_service_online(norm):
+            return True
+
+        # Quick HTTP probe check
+        probe_url = ""
+        if norm == "admin":
+            probe_url = os.getenv("ADMIN_PORTAL_API_URL", "http://127.0.0.1:8001").rstrip("/") + "/docs"
+        elif norm == "ma":
+            probe_url = os.getenv("MA_PORTAL_API_URL", "http://127.0.0.1:8000").rstrip("/") + "/docs"
+
+        if probe_url:
+            try:
+                async with httpx.AsyncClient(timeout=1.0) as client:
+                    resp = await client.get(probe_url)
+                    if resp.status_code in [200, 307, 308]:
+                        self.update_instance_status(norm, f"{norm}-auto-probe", "online")
+                        return True
+            except Exception:
+                pass
+
+        # 2. Event listener wait loop
+        event = asyncio.Event()
+
+        def _listener(svc: str, status: str, _):
+            if normalize_service_name(svc) == norm and status == "online":
+                event.set()
+
+        self.add_status_listener(_listener)
+        start_time = asyncio.get_event_loop().time()
+
+        try:
+            while True:
+                if self.is_service_online(norm):
+                    return True
+
+                # Fast probe every 1.5 seconds
+                if probe_url:
+                    try:
+                        async with httpx.AsyncClient(timeout=1.0) as client:
+                            resp = await client.get(probe_url)
+                            if resp.status_code in [200, 307, 308]:
+                                self.update_instance_status(norm, f"{norm}-auto-probe", "online")
+                                return True
+                    except Exception:
+                        pass
+
+                try:
+                    await asyncio.wait_for(event.wait(), timeout=1.5)
+                    if self.is_service_online(norm):
+                        return True
+                except asyncio.TimeoutError:
+                    pass
+
+                if timeout and (asyncio.get_event_loop().time() - start_time) >= timeout:
+                    return False
+        finally:
+            self.remove_status_listener(_listener)
+
 
     def get_all_statuses(self) -> Dict[str, Any]:
         """Returns snapshot of current service statuses for initial page hydration."""
