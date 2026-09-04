@@ -115,13 +115,15 @@ class ServiceStatusRegistry:
             return True
 
         # Quick HTTP probe check
-        probe_url = ""
+        probe_urls = []
         if norm == "admin":
-            probe_url = os.getenv("ADMIN_PORTAL_API_URL", "http://127.0.0.1:8001").rstrip("/") + "/docs"
+            admin_base = os.getenv("ADMIN_PORTAL_API_URL", "http://127.0.0.1:8001").rstrip("/")
+            probe_urls = [f"{admin_base}/health/live", f"{admin_base}/"]
         elif norm == "ma":
-            probe_url = os.getenv("MA_PORTAL_API_URL", "http://127.0.0.1:8000").rstrip("/") + "/docs"
+            ma_base = os.getenv("MA_PORTAL_API_URL", "http://127.0.0.1:8000").rstrip("/")
+            probe_urls = [f"{ma_base}/health/live", f"{ma_base}/"]
 
-        if probe_url:
+        for probe_url in probe_urls:
             try:
                 async with httpx.AsyncClient(timeout=1.0) as client:
                     resp = await client.get(probe_url)

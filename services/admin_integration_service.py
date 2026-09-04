@@ -23,8 +23,8 @@ logger = logging.getLogger(__name__)
 ADMIN_API_BASE = os.getenv("ADMIN_PORTAL_API_URL", os.getenv("ADMIN_API_BASE", "http://127.0.0.1:8001"))
 CEO_DATA_API_URL = os.getenv("CEO_DATA_API_URL", os.getenv("INTERNAL_API_URL", "http://127.0.0.1:8005"))
 MA_API_BASE = os.getenv("MA_PORTAL_API_URL", "http://127.0.0.1:8000")
-TIMEOUT_SECONDS = float(os.getenv("INTEGRATION_TIMEOUT_SECONDS", "1.2"))
-CONNECT_TIMEOUT = 0.5
+TIMEOUT_SECONDS = float(os.getenv("INTEGRATION_TIMEOUT_SECONDS", "5.0"))
+CONNECT_TIMEOUT = 2.0
 HARD_TIMEOUT_SECONDS = float(os.getenv("HARD_TIMEOUT_SECONDS", "15.0"))
 
 JWT_SECRET = os.environ.get("JWT_SECRET") or os.environ.get("SESSION_SECRET") or "OU2YW8HGoJJMb7+aAVjoxRXah2gSUtvPLPlzK8G6j9c="
@@ -230,29 +230,40 @@ async def _persist_purchase_requests_to_projection(raw_list: List[Dict[str, Any]
     try:
         from postgresql_db.database import get_pool
         pool = get_pool()
-        async with pool.acquire() as conn:
-            for r in raw_list:
-                parsed = _parse_purchase_request_item(r)
-                res_id = str(parsed["id"])
-                raw_status = str(parsed.get("status") or "")
-                await conn.execute(
-                    """
-                    INSERT INTO ceo_service_projections (
-                        service_name, resource_type, resource_id, version, data,
-                        source_status, last_synchronized_at, is_stale, updated_at
-                    ) VALUES ('administration', 'purchase_request', $1, 1, $2, $3, NOW(), false, NOW())
-                    ON CONFLICT (service_name, resource_type, resource_id)
-                    DO UPDATE SET
-                        data = EXCLUDED.data,
-                        source_status = EXCLUDED.source_status,
-                        last_synchronized_at = NOW(),
-                        is_stale = false,
-                        updated_at = NOW()
-                    """,
-                    res_id,
-                    json.dumps(parsed),
-                    raw_status,
+        batch_payload = []
+        for r in raw_list:
+            parsed = _parse_purchase_request_item(r)
+            res_id = str(parsed["id"])
+            raw_status = str(parsed.get("status") or "")
+            batch_payload.append({
+                "id": res_id,
+                "data": json.dumps(parsed),
+                "status": raw_status,
+            })
+        if not batch_payload:
+            return
+
+        batch_json = json.dumps(batch_payload)
+        async with pool.acquire(timeout=10.0) as conn:
+            await conn.execute(
+                """
+                INSERT INTO ceo_service_projections (
+                    service_name, resource_type, resource_id, version, data,
+                    source_status, last_synchronized_at, is_stale, updated_at
                 )
+                SELECT
+                    'administration', 'purchase_request', x.id, 1, x.data::jsonb, x.status, NOW(), false, NOW()
+                FROM json_to_recordset($1::json) AS x(id text, data text, status text)
+                ON CONFLICT (service_name, resource_type, resource_id)
+                DO UPDATE SET
+                    data = EXCLUDED.data,
+                    source_status = EXCLUDED.source_status,
+                    last_synchronized_at = NOW(),
+                    is_stale = false,
+                    updated_at = NOW()
+                """,
+                batch_json,
+            )
     except Exception as exc:
         logger.warning(f"Failed to persist purchase requests to PostgreSQL projection cache: {exc}")
 
@@ -500,34 +511,45 @@ async def execute_purchase_transition(request_id: str, action: str, note: Option
 
 
 async def _persist_admin_tasks_to_projection(raw_list: List[Dict[str, Any]]) -> None:
-    """Upserts administration tasks into PostgreSQL ceo_service_projections."""
+    """Upserts administration tasks into PostgreSQL ceo_service_projections in a fast batch."""
     if not raw_list:
         return
     try:
         from postgresql_db.database import get_pool
         pool = get_pool()
-        async with pool.acquire() as conn:
-            for task in raw_list:
-                task_id = str(task.get("id"))
-                st = str(task.get("status") or "")
-                await conn.execute(
-                    """
-                    INSERT INTO ceo_service_projections (
-                        service_name, resource_type, resource_id, version, data,
-                        source_status, last_synchronized_at, is_stale, updated_at
-                    ) VALUES ('administration', 'task', $1, 1, $2, $3, NOW(), false, NOW())
-                    ON CONFLICT (service_name, resource_type, resource_id)
-                    DO UPDATE SET
-                        data = EXCLUDED.data,
-                        source_status = EXCLUDED.source_status,
-                        last_synchronized_at = NOW(),
-                        is_stale = false,
-                        updated_at = NOW()
-                    """,
-                    task_id,
-                    json.dumps(task),
-                    st,
+        batch_payload = [
+            {
+                "id": str(task.get("id")),
+                "data": json.dumps(task),
+                "status": str(task.get("status") or ""),
+            }
+            for task in raw_list
+            if task.get("id") is not None
+        ]
+        if not batch_payload:
+            return
+
+        batch_json = json.dumps(batch_payload)
+        async with pool.acquire(timeout=10.0) as conn:
+            await conn.execute(
+                """
+                INSERT INTO ceo_service_projections (
+                    service_name, resource_type, resource_id, version, data,
+                    source_status, last_synchronized_at, is_stale, updated_at
                 )
+                SELECT
+                    'administration', 'task', x.id, 1, x.data::jsonb, x.status, NOW(), false, NOW()
+                FROM json_to_recordset($1::json) AS x(id text, data text, status text)
+                ON CONFLICT (service_name, resource_type, resource_id)
+                DO UPDATE SET
+                    data = EXCLUDED.data,
+                    source_status = EXCLUDED.source_status,
+                    last_synchronized_at = NOW(),
+                    is_stale = false,
+                    updated_at = NOW()
+                """,
+                batch_json,
+            )
     except Exception as exc:
         logger.warning(f"Failed to persist admin tasks to PostgreSQL projections: {exc}")
 
@@ -557,7 +579,7 @@ async def _get_projected_admin_tasks() -> List[Dict[str, Any]]:
 async def get_admin_tasks(user_id: Optional[UUID] = None) -> List[Dict[str, Any]]:
     """
     Fetches administration tasks.
-    - When Admin Portal is online, pulls live records and caches into PostgreSQL.
+    - When Admin Portal is online, pulls live records and caches into PostgreSQL asynchronously.
     - When Admin Portal is offline, returns the persistent local copy from PostgreSQL.
     """
     from services.service_status_registry import service_status_registry
@@ -573,7 +595,7 @@ async def get_admin_tasks(user_id: Optional[UUID] = None) -> List[Dict[str, Any]
                 if resp.status_code == 200:
                     data = resp.json()
                     if isinstance(data, list):
-                        await _persist_admin_tasks_to_projection(data)
+                        asyncio.create_task(_persist_admin_tasks_to_projection(data))
                         return data
         except Exception as exc:
             logger.warning(f"Error fetching live admin tasks: {exc}. Reading local projection.")
@@ -583,34 +605,45 @@ async def get_admin_tasks(user_id: Optional[UUID] = None) -> List[Dict[str, Any]
 
 
 async def _persist_ma_deals_to_projection(raw_list: List[Dict[str, Any]]) -> None:
-    """Upserts M&A deals into PostgreSQL ceo_service_projections."""
+    """Upserts M&A deals into PostgreSQL ceo_service_projections in a fast batch."""
     if not raw_list:
         return
     try:
         from postgresql_db.database import get_pool
         pool = get_pool()
-        async with pool.acquire() as conn:
-            for deal in raw_list:
-                deal_id = str(deal.get("id"))
-                st = str(deal.get("stage") or deal.get("priority_name") or "")
-                await conn.execute(
-                    """
-                    INSERT INTO ceo_service_projections (
-                        service_name, resource_type, resource_id, version, data,
-                        source_status, last_synchronized_at, is_stale, updated_at
-                    ) VALUES ('ma', 'deal', $1, 1, $2, $3, NOW(), false, NOW())
-                    ON CONFLICT (service_name, resource_type, resource_id)
-                    DO UPDATE SET
-                        data = EXCLUDED.data,
-                        source_status = EXCLUDED.source_status,
-                        last_synchronized_at = NOW(),
-                        is_stale = false,
-                        updated_at = NOW()
-                    """,
-                    deal_id,
-                    json.dumps(deal),
-                    st,
+        batch_payload = [
+            {
+                "id": str(deal.get("id")),
+                "data": json.dumps(deal),
+                "status": str(deal.get("stage") or deal.get("priority_name") or ""),
+            }
+            for deal in raw_list
+            if deal.get("id") is not None
+        ]
+        if not batch_payload:
+            return
+
+        batch_json = json.dumps(batch_payload)
+        async with pool.acquire(timeout=10.0) as conn:
+            await conn.execute(
+                """
+                INSERT INTO ceo_service_projections (
+                    service_name, resource_type, resource_id, version, data,
+                    source_status, last_synchronized_at, is_stale, updated_at
                 )
+                SELECT
+                    'ma', 'deal', x.id, 1, x.data::jsonb, x.status, NOW(), false, NOW()
+                FROM json_to_recordset($1::json) AS x(id text, data text, status text)
+                ON CONFLICT (service_name, resource_type, resource_id)
+                DO UPDATE SET
+                    data = EXCLUDED.data,
+                    source_status = EXCLUDED.source_status,
+                    last_synchronized_at = NOW(),
+                    is_stale = false,
+                    updated_at = NOW()
+                """,
+                batch_json,
+            )
     except Exception as exc:
         logger.warning(f"Failed to persist M&A deals to PostgreSQL projections: {exc}")
 
@@ -665,7 +698,7 @@ async def _get_projected_ma_deals() -> List[Dict[str, Any]]:
 async def get_ma_pipeline_tasks(limit: int = 50, skip: int = 0, loi_accepted_only: bool = False) -> List[Dict[str, Any]]:
     """
     Fetches active M&A acquisition pipeline tasks.
-    - When M&A service is online, fetches live and updates the PostgreSQL local projection.
+    - When M&A service is online, fetches live and updates the PostgreSQL local projection asynchronously.
     - When M&A service is offline, returns the persistent local copy from PostgreSQL.
     """
     from services.service_status_registry import service_status_registry
@@ -673,7 +706,7 @@ async def get_ma_pipeline_tasks(limit: int = 50, skip: int = 0, loi_accepted_onl
 
     raw_data: List[Dict[str, Any]] = []
 
-    if is_online:
+    if is_online or ma_circuit_breaker.allow_request():
         try:
             token = await _generate_service_token(user_id=UUID("1623e39f-1d87-4e6d-a6c3-3195c6ab773b"))
             headers = {"Authorization": f"Bearer {token}"}
@@ -685,8 +718,12 @@ async def get_ma_pipeline_tasks(limit: int = 50, skip: int = 0, loi_accepted_onl
                     data = resp.json()
                     if isinstance(data, list):
                         raw_data = data
-                        await _persist_ma_deals_to_projection(data)
+                        ma_circuit_breaker.record_success()
+                        if not is_online:
+                            service_status_registry.update_instance_status("ma", "ma-01", "online")
+                        asyncio.create_task(_persist_ma_deals_to_projection(data))
         except Exception as exc:
+            ma_circuit_breaker.record_failure(exc)
             logger.warning(f"Error fetching live M&A tasks: {exc}. Reading local projection.")
 
     if not raw_data:
@@ -712,7 +749,7 @@ async def get_ma_pipeline_summary() -> Dict[str, Any]:
     call_logs_count = 0
     companies_count = 0
 
-    if is_online:
+    if is_online or ma_circuit_breaker.allow_request():
         try:
             token = await _generate_service_token(user_id=UUID("1623e39f-1d87-4e6d-a6c3-3195c6ab773b"))
             headers = {"Authorization": f"Bearer {token}"}
@@ -730,7 +767,11 @@ async def get_ma_pipeline_summary() -> Dict[str, Any]:
                 t_data = r_tasks.json()
                 if isinstance(t_data, list):
                     tasks = t_data
-                    await _persist_ma_deals_to_projection(tasks)
+                    ma_circuit_breaker.record_success()
+                    if not is_online:
+                        service_status_registry.update_instance_status("ma", "ma-01", "online")
+                        is_online = True
+                    asyncio.create_task(_persist_ma_deals_to_projection(tasks))
 
             if not isinstance(r_calls, Exception) and r_calls.status_code == 200:
                 c_data = r_calls.json()
@@ -741,6 +782,7 @@ async def get_ma_pipeline_summary() -> Dict[str, Any]:
                 companies_count = len(comp_data) if isinstance(comp_data, list) else 0
 
         except Exception as exc:
+            ma_circuit_breaker.record_failure(exc)
             logger.warning(f"Error fetching live M&A summary: {exc}. Computing from local projection.")
 
     if not tasks:

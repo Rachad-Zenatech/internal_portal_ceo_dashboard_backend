@@ -43,6 +43,10 @@ class ResultConsumer:
         )
         logger.info("Result & Event Consumer subscribed to administration and M&A event queues.")
 
+    async def stop(self):
+        self._running = False
+        logger.info("Result & Event Consumer stopped.")
+
     async def handle_incoming_message(self, message: Dict[str, Any]) -> None:
         """Processes an incoming result or projection event message with inbox deduplication."""
         msg_type = message.get("message_type")

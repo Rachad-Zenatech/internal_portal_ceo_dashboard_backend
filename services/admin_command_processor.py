@@ -54,6 +54,10 @@ class AdminCommandProcessor:
 
         service_status_registry.add_status_listener(_on_admin_status)
 
+    async def stop(self):
+        self._running = False
+        logger.info("Administration Command Processor stopped.")
+
     async def recover_unprocessed_commands(self) -> None:
         """Finds any commands in QUEUED or PROCESSING and processes them once admin is online."""
         try:

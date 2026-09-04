@@ -33,6 +33,10 @@ class MACommandProcessor:
             self.process_command,
         )
 
+    async def stop(self):
+        self._running = False
+        logger.info("M&A Command Processor stopped.")
+
     async def process_command(self, message: Dict[str, Any]) -> None:
         """Dispatches an M&A command to the domain business logic."""
         try:
