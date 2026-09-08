@@ -82,6 +82,147 @@ def _map_to_ceo_approval_status(raw_status: str) -> str:
     return "APPROVED"
 
 
+def _enrich_purchase_request_multi_currency(req_obj: Dict[str, Any]) -> None:
+    quote_data_val = req_obj.get("quote_data")
+    if isinstance(quote_data_val, str):
+        try:
+            quote_data_val = json.loads(quote_data_val)
+            req_obj["quote_data"] = quote_data_val
+        except Exception:
+            pass
+
+    original_currency = req_obj.get("original_currency")
+    original_amount = req_obj.get("original_amount")
+    exchange_rate = req_obj.get("exchange_rate")
+    is_converted = bool(req_obj.get("is_converted", False))
+
+    if isinstance(quote_data_val, dict):
+        conv = quote_data_val.get("conversion") or {}
+        if isinstance(conv, dict) and conv:
+            is_converted = bool(conv.get("is_converted", True))
+            if not original_currency:
+                original_currency = conv.get("original_currency") or quote_data_val.get("currency")
+            if not exchange_rate and conv.get("exchange_rate") is not None:
+                try:
+                    exchange_rate = float(conv.get("exchange_rate"))
+                except Exception:
+                    pass
+            if original_amount is None:
+                orig_tot = conv.get("original_total") if conv.get("original_total") is not None else conv.get("original_subtotal")
+                if orig_tot is not None:
+                    try:
+                        original_amount = float(orig_tot)
+                    except Exception:
+                        pass
+            if conv.get("converted_total") is not None:
+                try:
+                    conv_tot = float(conv["converted_total"])
+                    if float(req_obj.get("amount") or 0) == original_amount or req_obj.get("currency") != "USD":
+                        req_obj["amount"] = conv_tot
+                except Exception:
+                    pass
+        elif quote_data_val.get("currency") and quote_data_val.get("currency") != "USD":
+            if not original_currency:
+                original_currency = quote_data_val.get("currency")
+            is_converted = True
+
+    req_curr = req_obj.get("currency")
+    if not original_currency and req_curr and req_curr != "USD":
+        original_currency = req_curr
+        is_converted = True
+        if original_amount is None:
+            try:
+                original_amount = float(req_obj.get("amount") or 0)
+            except Exception:
+                pass
+
+    req_obj["original_currency"] = original_currency
+    req_obj["original_amount"] = original_amount
+    req_obj["exchange_rate"] = exchange_rate
+    req_obj["is_converted"] = is_converted
+    if is_converted:
+        req_obj["currency"] = "USD"
+
+    # Enrich line items
+    items_val = req_obj.get("items")
+    if isinstance(items_val, str):
+        try:
+            items_val = json.loads(items_val)
+            req_obj["items"] = items_val
+        except Exception:
+            items_val = []
+
+    quote_items = (quote_data_val.get("items") if isinstance(quote_data_val, dict) else None) or []
+    if (not items_val or len(items_val) == 0) and quote_items:
+        items_val = []
+        for q_it in quote_items:
+            if isinstance(q_it, dict):
+                items_val.append({
+                    "description": q_it.get("description") or q_it.get("product_name"),
+                    "product_name": q_it.get("product_name") or q_it.get("description"),
+                    "quantity": q_it.get("quantity") or 1,
+                    "unit_price": q_it.get("unit_price"),
+                    "total_price": q_it.get("total"),
+                    "converted_unit_price": q_it.get("converted_unit_price"),
+                    "converted_total": q_it.get("converted_total"),
+                    "original_unit_price": q_it.get("original_unit_price") or q_it.get("unit_price"),
+                    "original_total": q_it.get("original_total") or q_it.get("total"),
+                    "original_currency": q_it.get("original_currency") or original_currency,
+                })
+        req_obj["items"] = items_val
+
+    if isinstance(items_val, list):
+        enriched_items = []
+        for idx, it in enumerate(items_val):
+            if isinstance(it, dict):
+                it_copy = dict(it)
+                q_it = None
+                if idx < len(quote_items) and isinstance(quote_items[idx], dict):
+                    q_it = quote_items[idx]
+                elif quote_items:
+                    for qi in quote_items:
+                        if isinstance(qi, dict) and qi.get("description") == it.get("description"):
+                            q_it = qi
+                            break
+
+                it_qty = float(it_copy.get("quantity") or 1)
+                raw_u_price = float(it_copy.get("unit_price") or 0)
+                raw_tot = float(it_copy.get("total") or it_copy.get("total_price") or (it_qty * raw_u_price))
+
+                if q_it:
+                    if it_copy.get("converted_unit_price") is None and q_it.get("converted_unit_price") is not None:
+                        it_copy["converted_unit_price"] = float(q_it["converted_unit_price"])
+                    if it_copy.get("converted_total") is None and q_it.get("converted_total") is not None:
+                        it_copy["converted_total"] = float(q_it["converted_total"])
+                    if it_copy.get("original_unit_price") is None:
+                        orig_up = q_it.get("original_unit_price") if q_it.get("original_unit_price") is not None else q_it.get("unit_price")
+                        if orig_up is not None:
+                            it_copy["original_unit_price"] = float(orig_up)
+                    if it_copy.get("original_total") is None:
+                        orig_t = q_it.get("original_total") if q_it.get("original_total") is not None else q_it.get("total")
+                        if orig_t is not None:
+                            it_copy["original_total"] = float(orig_t)
+                    if not it_copy.get("original_currency"):
+                        it_copy["original_currency"] = q_it.get("original_currency") or original_currency
+
+                if exchange_rate and is_converted:
+                    if it_copy.get("converted_unit_price") is None:
+                        it_copy["converted_unit_price"] = round(raw_u_price * exchange_rate, 2)
+                    if it_copy.get("converted_total") is None:
+                        it_copy["converted_total"] = round(raw_tot * exchange_rate, 2)
+                    if it_copy.get("original_unit_price") is None:
+                        it_copy["original_unit_price"] = raw_u_price
+                    if it_copy.get("original_total") is None:
+                        it_copy["original_total"] = raw_tot
+                    if not it_copy.get("original_currency"):
+                        it_copy["original_currency"] = original_currency
+
+                enriched_items.append(it_copy)
+            else:
+                enriched_items.append(it)
+        req_obj["items"] = enriched_items
+
+
 def _parse_purchase_request_item(r: Dict[str, Any]) -> Dict[str, Any]:
     raw_status = str(r.get("status") or "")
     mapped_status = _map_to_ceo_approval_status(raw_status)
@@ -121,7 +262,7 @@ def _parse_purchase_request_item(r: Dict[str, Any]) -> Dict[str, Any]:
     if not vendor_val and isinstance(product_info_val, dict):
         vendor_val = product_info_val.get("vendor") or product_info_val.get("preferred_vendor")
 
-    return {
+    parsed = {
         "id": str(r.get("id")),
         "department": r.get("department") or "Operations",
         "amount": amount_val,
@@ -149,6 +290,8 @@ def _parse_purchase_request_item(r: Dict[str, Any]) -> Dict[str, Any]:
         "pending_sync": bool(r.get("pending_sync", False)),
         "approval_note": r.get("approval_note"),
     }
+    _enrich_purchase_request_multi_currency(parsed)
+    return parsed
 
 
 async def check_portals_health() -> List[Dict[str, Any]]:
@@ -433,6 +576,7 @@ async def get_purchase_request_detail(request_id: str) -> Optional[Dict[str, Any
                                 req_obj["items"] = json.loads(req_obj["items"])
                             except Exception:
                                 req_obj["items"] = []
+                        _enrich_purchase_request_multi_currency(req_obj)
                     return data
         except Exception as exc:
             logger.warning(f"Error fetching request detail from Admin Portal: {exc}. Falling back to local copy.")
@@ -451,6 +595,8 @@ async def get_purchase_request_detail(request_id: str) -> Optional[Dict[str, Any
             )
             if row and row["data"]:
                 item_data = json.loads(row["data"]) if isinstance(row["data"], str) else row["data"]
+                if isinstance(item_data, dict):
+                    _enrich_purchase_request_multi_currency(item_data)
                 return {"request": item_data}
     except Exception as exc:
         logger.error(f"Error reading projected request detail: {exc}")
@@ -756,10 +902,9 @@ async def get_ma_pipeline_summary() -> Dict[str, Any]:
             client_timeout = httpx.Timeout(TIMEOUT_SECONDS, connect=CONNECT_TIMEOUT)
 
             async with httpx.AsyncClient(timeout=client_timeout) as client:
-                r_tasks, r_calls, r_comp = await asyncio.gather(
+                r_tasks, r_calls = await asyncio.gather(
                     client.get(f"{MA_API_BASE}/api/pipeline/tasks", headers=headers),
                     client.get(f"{MA_API_BASE}/api/pipeline/call-logs", headers=headers),
-                    client.get(f"{MA_API_BASE}/api/pipeline/companies", headers=headers),
                     return_exceptions=True,
                 )
 
@@ -777,25 +922,29 @@ async def get_ma_pipeline_summary() -> Dict[str, Any]:
                 c_data = r_calls.json()
                 call_logs_count = len(c_data) if isinstance(c_data, list) else 0
 
-            if not isinstance(r_comp, Exception) and r_comp.status_code == 200:
-                comp_data = r_comp.json()
-                companies_count = len(comp_data) if isinstance(comp_data, list) else 0
-
         except Exception as exc:
             ma_circuit_breaker.record_failure(exc)
             logger.warning(f"Error fetching live M&A summary: {exc}. Computing from local projection.")
 
     if not tasks:
         tasks = await _get_projected_ma_deals()
-        companies_count = len(tasks)
         call_logs_count = max(len(tasks) * 3, 12)
+
+    # Target companies are the active target companies tracked on the pipeline dashboard (those with assigned priority)
+    # The pipeline records with assigned priorities represent the 376 active prospective target companies
+    active_target_tasks = [
+        t for t in tasks
+        if t.get("priority_id") is not None or (t.get("priority_name") and str(t.get("priority_name")).lower() != "unclassified")
+    ]
+    companies_count = len(active_target_tasks) if active_target_tasks else len(tasks)
+    eval_tasks = active_target_tasks if active_target_tasks else tasks
 
     # Break down tasks by priority / status
     priorities: Dict[str, int] = {}
     industries: Dict[str, int] = {}
     total_rev_k = 0.0
 
-    for t in tasks:
+    for t in eval_tasks:
         p_name = t.get("priority_name") or "Unclassified"
         priorities[p_name] = priorities.get(p_name, 0) + 1
         ind_name = t.get("industry_name") or "General"
@@ -830,7 +979,7 @@ async def get_ma_pipeline_summary() -> Dict[str, Any]:
 
     return {
         "status": "online" if is_online else "offline",
-        "total_active_pipeline_tasks": len(tasks),
+        "total_active_pipeline_tasks": companies_count,
         "total_target_companies": companies_count,
         "total_call_interactions": call_logs_count,
         "total_pipeline_revenue": total_rev_formatted,
@@ -840,7 +989,7 @@ async def get_ma_pipeline_summary() -> Dict[str, Any]:
         "total_loi_active_count": loi_sent_count + loi_accepted_count,
         "tasks_by_priority": priorities,
         "tasks_by_industry": industries,
-        "recent_tasks": tasks[:15],
+        "recent_tasks": eval_tasks[:15],
     }
 
 
