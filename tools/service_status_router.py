@@ -5,6 +5,7 @@ Provides:
 - WebSocket /ws/service-status: Real-time broadcast stream for service availability transitions.
 """
 
+import os
 import asyncio
 import json
 import logging

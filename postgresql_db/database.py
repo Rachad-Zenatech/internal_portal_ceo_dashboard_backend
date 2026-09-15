@@ -25,11 +25,11 @@ async def create_pool():
                 _pool = await asyncpg.create_pool(
                     dsn=os.environ["DATABASE_URL"],
                     ssl=use_ssl,
-                    min_size=1,
-                    max_size=3,
+                    min_size=int(os.getenv("DATABASE_POOL_MIN_SIZE", "2")),
+                    max_size=int(os.getenv("DATABASE_POOL_MAX_SIZE", "15")),
                     timeout=15.0,
                     command_timeout=30.0,
-                    max_inactive_connection_lifetime=10.0,
+                    max_inactive_connection_lifetime=60.0,
                     statement_cache_size=0,
                     server_settings={"application_name": "ceo_dashboard"},
                 )
@@ -64,10 +64,10 @@ async def create_admin_pool():
                     dsn=admin_dsn,
                     ssl=use_ssl,
                     min_size=1,
-                    max_size=2,
+                    max_size=int(os.getenv("ADMIN_DATABASE_POOL_MAX_SIZE", "5")),
                     timeout=15.0,
                     command_timeout=30.0,
-                    max_inactive_connection_lifetime=10.0,
+                    max_inactive_connection_lifetime=60.0,
                     statement_cache_size=0,
                 )
                 break
@@ -90,27 +90,42 @@ async def create_admin_pool():
 async def close_pool():
     global _pool
     if _pool:
-        await _pool.close()
+        try:
+            await asyncio.wait_for(_pool.close(), timeout=3.0)
+        except Exception:
+            try:
+                _pool.terminate()
+            except Exception:
+                pass
         _pool = None
         logger.info("Closed PostgreSQL connection pool", extra={"event": "database_pool_closed"})
 
 async def close_admin_pool():
     global _admin_pool
     if _admin_pool:
-        await _admin_pool.close()
+        try:
+            await asyncio.wait_for(_admin_pool.close(), timeout=3.0)
+        except Exception:
+            try:
+                _admin_pool.terminate()
+            except Exception:
+                pass
         _admin_pool = None
         logger.info("Closed Admin PostgreSQL connection pool", extra={"event": "admin_database_pool_closed"})
 
 async def reset_pool():
-    """Drop the current pool and create a fresh one after connection failures."""
+    """Drop the current pool and create a fresh one after fatal connection failures."""
     global _pool
     old_pool = _pool
     _pool = None
     if old_pool:
         try:
-            await asyncio.wait_for(old_pool.close(), timeout=5)
+            await asyncio.wait_for(old_pool.close(), timeout=2.0)
         except Exception:
-            old_pool.terminate()
+            try:
+                old_pool.terminate()
+            except Exception:
+                pass
     return await create_pool()
 
 
@@ -132,7 +147,7 @@ async def get_conn():
     try:
         async with pool.acquire(timeout=10.0) as conn:
             yield conn
-    except (asyncpg.PostgresConnectionError, ConnectionResetError, TimeoutError, asyncio.TimeoutError) as exc:
+    except (asyncpg.PostgresConnectionError, ConnectionResetError, asyncpg.CannotConnectNowError) as exc:
         logger.warning(f"Database connection error ({type(exc).__name__}: {exc}), resetting pool...")
         new_pool = await reset_pool()
         async with new_pool.acquire(timeout=10.0) as conn:
