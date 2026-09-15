@@ -17,6 +17,7 @@ from services.admin_integration_service import (
     get_admin_tasks,
 )
 from services.auth_service import get_current_user_id_dependency
+from services.logging_service import create_background_task
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +82,7 @@ def _register_circuit_breaker_listeners():
             }
             try:
                 asyncio.get_running_loop().create_task(broadcast_event(event))
+                create_background_task(broadcast_event(event), name="broadcast-circuit-state-change")
             except RuntimeError:
                 # No running event loop (e.g. during import/shutdown) - nothing to notify yet.
                 pass
@@ -182,6 +184,7 @@ async def list_pending_approvals():
     try:
         from services.notification_service import sync_approval_notifications
         asyncio.create_task(sync_approval_notifications(reqs))
+        create_background_task(sync_approval_notifications(reqs), name="sync-approval-notifications")
     except Exception as exc:
         logger.warning(f"Failed to sync notifications on list approvals: {exc}")
     return reqs
@@ -332,6 +335,7 @@ async def publish_event(payload: CeoEventPayload):
             try:
                 from services.admin_integration_service import sync_admin_records_from_source
                 asyncio.create_task(sync_admin_records_from_source())
+                create_background_task(sync_admin_records_from_source(), name="sync-admin-records-on-event")
             except Exception as e:
                 logger.warning(f"Failed to trigger sync_admin_records_from_source: {e}")
 
@@ -365,6 +369,7 @@ async def publish_event(payload: CeoEventPayload):
         try:
             from tools.service_status_router import ws_manager
             asyncio.create_task(ws_manager.broadcast(ws_msg))
+            create_background_task(ws_manager.broadcast(ws_msg), name="ws-broadcast-ceo-event")
         except Exception as ws_err:
             logger.debug(f"WebSocket broadcast error: {ws_err}")
 

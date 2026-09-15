@@ -16,6 +16,7 @@ from uuid import UUID
 from fastapi import APIRouter, Cookie, Depends, Query, WebSocket, WebSocketDisconnect, status
 from services.auth_service import AUTH_COOKIE_NAME, verify_token
 from services.service_status_registry import service_status_registry
+from services.logging_service import create_background_task
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +91,7 @@ def _on_registry_status_change(service: str, status: str, updated_at: str):
     try:
         loop = asyncio.get_running_loop()
         loop.create_task(ws_manager.broadcast(event))
+        create_background_task(ws_manager.broadcast(event), name="ws-broadcast-status-change")
     except RuntimeError:
         pass
 
@@ -98,6 +100,7 @@ def _on_registry_business_event(event_dict: dict):
     try:
         loop = asyncio.get_running_loop()
         loop.create_task(ws_manager.broadcast(event_dict))
+        create_background_task(ws_manager.broadcast(event_dict), name="ws-broadcast-registry-business-event")
     except RuntimeError:
         pass
 

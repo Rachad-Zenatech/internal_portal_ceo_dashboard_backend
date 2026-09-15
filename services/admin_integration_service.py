@@ -11,6 +11,7 @@ import jwt
 import httpx
 
 from postgresql_db.database import get_conn
+from services.logging_service import create_background_task
 from services.integration_resilience import (
     admin_circuit_breaker,
     ma_circuit_breaker,
@@ -742,6 +743,7 @@ async def get_admin_tasks(user_id: Optional[UUID] = None) -> List[Dict[str, Any]
                     data = resp.json()
                     if isinstance(data, list):
                         asyncio.create_task(_persist_admin_tasks_to_projection(data))
+                        create_background_task(_persist_admin_tasks_to_projection(data), name="persist-admin-tasks-projection")
                         return data
         except Exception as exc:
             logger.warning(f"Error fetching live admin tasks: {exc}. Reading local projection.")
@@ -868,6 +870,7 @@ async def get_ma_pipeline_tasks(limit: int = 50, skip: int = 0, loi_accepted_onl
                         if not is_online:
                             service_status_registry.update_instance_status("ma", "ma-01", "online")
                         asyncio.create_task(_persist_ma_deals_to_projection(data))
+                        create_background_task(_persist_ma_deals_to_projection(data), name="persist-ma-deals-projection")
         except Exception as exc:
             ma_circuit_breaker.record_failure(exc)
             logger.warning(f"Error fetching live M&A tasks: {exc}. Reading local projection.")
@@ -917,6 +920,7 @@ async def get_ma_pipeline_summary() -> Dict[str, Any]:
                         service_status_registry.update_instance_status("ma", "ma-01", "online")
                         is_online = True
                     asyncio.create_task(_persist_ma_deals_to_projection(tasks))
+                    create_background_task(_persist_ma_deals_to_projection(tasks), name="persist-ma-deals-summary-projection")
 
             if not isinstance(r_calls, Exception) and r_calls.status_code == 200:
                 c_data = r_calls.json()
