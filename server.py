@@ -44,6 +44,7 @@ from tools.approver_roles_router import router as approver_roles_router, ensure_
 from tools.graph_router import router as graph_router
 from tools.workflow_assignment_router import router as workflow_assignment_router
 from tools.service_status_router import router as service_status_router
+from tools.finance_integration_router import router as finance_integration_router
 
 # MCP tools
 from mcp_tools import register_all as register_mcp_tools, ask_gemini, ask_gemini_stream, sync_mcp_tools_to_vector_db
@@ -222,6 +223,8 @@ app.include_router(workflow_assignment_router, tags=["Workflow Assignments"], de
 app.include_router(approver_roles_router, prefix="/api/v1/ceo", tags=["Approver Roles"], dependencies=authenticated)
 app.include_router(graph_router, prefix="/api/v1/ceo", tags=["Microsoft Graph"], dependencies=authenticated)
 app.include_router(service_status_router, tags=["Service Availability"])
+app.include_router(finance_integration_router, prefix="/api", tags=["Finance Integration"], dependencies=authenticated)
+app.include_router(finance_integration_router, prefix="/api/v1/ceo", tags=["Finance Integration"], dependencies=authenticated)
 
 app.add_middleware(
     SessionMiddleware,
