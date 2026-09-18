@@ -182,11 +182,11 @@ async def get_portals_status():
 
 
 @router.get("/approvals/pending")
-async def list_pending_approvals():
+async def list_pending_approvals(user_id: Optional[UUID] = Depends(get_current_user_id_dependency)):
     """
     Fetches purchase requests from the Admin Portal that are pending executive decision.
     """
-    reqs = await get_pending_purchase_requests()
+    reqs = await get_pending_purchase_requests(user_id=user_id)
     try:
         from services.notification_service import sync_approval_notifications
         create_background_task(sync_approval_notifications(reqs), name="sync-approval-notifications")
@@ -196,20 +196,20 @@ async def list_pending_approvals():
 
 
 @router.get("/approvals/history")
-async def list_approved_history(limit: int = 50):
+async def list_approved_history(limit: int = 50, user_id: Optional[UUID] = Depends(get_current_user_id_dependency)):
     """
     Fetches live completed and approved purchase requests from the Administration Portal.
     """
-    return await get_completed_purchase_requests()
+    return await get_completed_purchase_requests(user_id=user_id)
 
 
 @router.get("/approvals/{request_id}")
-async def get_approval_request_detail(request_id: str):
+async def get_approval_request_detail(request_id: str, user_id: Optional[UUID] = Depends(get_current_user_id_dependency)):
     """
     Fetches full request details including product info, line items, and quote attachments from Admin Portal.
     """
     from services.admin_integration_service import get_purchase_request_detail
-    detail = await get_purchase_request_detail(request_id)
+    detail = await get_purchase_request_detail(request_id, user_id=user_id)
     if not detail:
         raise HTTPException(status_code=404, detail="Purchase request not found")
     return detail

@@ -36,14 +36,65 @@ JWT_ISSUER = "zenatech-internal-portal"
 _service_token_cache: Dict[str, Tuple[str, float]] = {}
 
 
-async def _resolve_admin_user_id(user_id: Optional[UUID] = None) -> str:
-    if user_id:
-        return str(user_id)
+_admin_user_id_cache: Dict[str, Tuple[str, float]] = {}
 
+
+async def _resolve_admin_user_id(user_id: Optional[UUID] = None) -> str:
+    now_ts = time.time()
+    cache_key = str(user_id) if user_id else "__default__"
+    cached = _admin_user_id_cache.get(cache_key)
+    if cached and cached[1] > now_ts:
+        return cached[0]
+
+    email: Optional[str] = None
+    if user_id:
+        try:
+            from postgresql_db.database import get_pool
+            ceo_pool = get_pool()
+            async with ceo_pool.acquire() as conn:
+                row = await conn.fetchrow("SELECT email FROM users WHERE id = $1", user_id)
+                if row and row.get("email"):
+                    email = str(row["email"]).lower().strip()
+        except Exception as exc:
+            logger.debug(f"Could not fetch email for user {user_id} from CEO DB: {exc}")
+
+    # 1. Try querying Admin DB via admin pool (matching by user email)
+    try:
+        from postgresql_db.database import get_admin_pool
+        admin_pool = get_admin_pool()
+        if admin_pool:
+            async with admin_pool.acquire() as conn:
+                if email:
+                    admin_row = await conn.fetchrow(
+                        "SELECT id FROM users WHERE LOWER(TRIM(email)) = $1 AND is_active = true AND deleted_at IS NULL",
+                        email,
+                    )
+                    if admin_row and admin_row.get("id"):
+                        resolved = str(admin_row["id"])
+                        _admin_user_id_cache[cache_key] = (resolved, now_ts + 300)
+                        return resolved
+
+                # If no specific user or email match, pick the primary active super admin in Admin DB
+                admin_row = await conn.fetchrow(
+                    "SELECT id FROM users WHERE is_super_admin = true AND is_active = true AND deleted_at IS NULL ORDER BY created_at ASC LIMIT 1"
+                )
+                if admin_row and admin_row.get("id"):
+                    resolved = str(admin_row["id"])
+                    _admin_user_id_cache[cache_key] = (resolved, now_ts + 300)
+                    return resolved
+    except Exception as exc:
+        logger.debug(f"Admin DB pool lookup during user resolution: {exc}")
+
+    # 2. Check environment variable
     env_admin_id = os.getenv("DEFAULT_ADMIN_USER_ID", "").strip()
     if env_admin_id:
         return env_admin_id
 
+    # 3. If user_id is provided, try user_id directly
+    if user_id:
+        return str(user_id)
+
+    # 4. Fallback to CEO DB super admin if admin DB is not reachable
     try:
         from postgresql_db.database import get_pool
         pool = get_pool()
@@ -53,8 +104,8 @@ async def _resolve_admin_user_id(user_id: Optional[UUID] = None) -> str:
             )
             if row and row.get("id"):
                 return str(row["id"])
-    except Exception as exc:
-        logger.debug(f"Could not resolve admin user dynamically: {exc}")
+    except Exception:
+        pass
 
     return "00000000-0000-0000-0000-000000000000"
 
@@ -396,12 +447,15 @@ async def _fetch_admin_raw_requests(user_id: Optional[UUID] = None, status: Opti
             data = resp.json()
             if isinstance(data, list):
                 return data
+        else:
+            logger.warning(f"Admin portal GET requests returned HTTP {resp.status_code}: {resp.text[:200]}")
+            resp.raise_for_status()
     return []
 
 
-async def _persist_purchase_requests_to_projection(raw_list: List[Dict[str, Any]]) -> None:
+async def _persist_purchase_requests_to_projection(raw_list: List[Dict[str, Any]], status_scope: Optional[str] = None) -> None:
     """Upserts all requests into PostgreSQL ceo_service_projections for durable offline availability."""
-    if not raw_list:
+    if raw_list is None:
         return
     try:
         from postgresql_db.database import get_pool
@@ -416,30 +470,54 @@ async def _persist_purchase_requests_to_projection(raw_list: List[Dict[str, Any]
                 "data": json.dumps(parsed),
                 "status": raw_status,
             })
-        if not batch_payload:
-            return
 
-        batch_json = json.dumps(batch_payload)
         async with pool.acquire(timeout=10.0) as conn:
-            await conn.execute(
-                """
-                INSERT INTO ceo_service_projections (
-                    service_name, resource_type, resource_id, version, data,
-                    source_status, last_synchronized_at, is_stale, updated_at
+            if batch_payload:
+                batch_json = json.dumps(batch_payload)
+                await conn.execute(
+                    """
+                    INSERT INTO ceo_service_projections (
+                        service_name, resource_type, resource_id, version, data,
+                        source_status, last_synchronized_at, is_stale, updated_at
+                    )
+                    SELECT
+                        'administration', 'purchase_request', x.id, 1, x.data::jsonb, x.status, NOW(), false, NOW()
+                    FROM json_to_recordset($1::json) AS x(id text, data text, status text)
+                    ON CONFLICT (service_name, resource_type, resource_id)
+                    DO UPDATE SET
+                        data = EXCLUDED.data,
+                        source_status = EXCLUDED.source_status,
+                        last_synchronized_at = NOW(),
+                        is_stale = false,
+                        updated_at = NOW()
+                    """,
+                    batch_json,
                 )
-                SELECT
-                    'administration', 'purchase_request', x.id, 1, x.data::jsonb, x.status, NOW(), false, NOW()
-                FROM json_to_recordset($1::json) AS x(id text, data text, status text)
-                ON CONFLICT (service_name, resource_type, resource_id)
-                DO UPDATE SET
-                    data = EXCLUDED.data,
-                    source_status = EXCLUDED.source_status,
-                    last_synchronized_at = NOW(),
-                    is_stale = false,
-                    updated_at = NOW()
-                """,
-                batch_json,
-            )
+
+            if status_scope:
+                live_ids = [str(item["id"]) for item in batch_payload]
+                if live_ids:
+                    await conn.execute(
+                        """
+                        DELETE FROM ceo_service_projections
+                        WHERE service_name = 'administration'
+                          AND resource_type = 'purchase_request'
+                          AND source_status = $1
+                          AND resource_id != ALL($2::text[])
+                        """,
+                        status_scope,
+                        live_ids,
+                    )
+                else:
+                    await conn.execute(
+                        """
+                        DELETE FROM ceo_service_projections
+                        WHERE service_name = 'administration'
+                          AND resource_type = 'purchase_request'
+                          AND source_status = $1
+                        """,
+                        status_scope,
+                    )
     except Exception as exc:
         logger.warning(f"Failed to persist purchase requests to PostgreSQL projection cache: {exc}")
 
@@ -542,7 +620,7 @@ async def get_pending_purchase_requests(user_id: Optional[UUID] = None) -> List[
                 admin_circuit_breaker.record_success()
                 if not is_online:
                     service_status_registry.update_instance_status("admin", "admin-01", "online")
-                await _persist_purchase_requests_to_projection(raw_list)
+                await _persist_purchase_requests_to_projection(raw_list, status_scope="WAITING_APPROVAL")
                 pending = []
                 for r in raw_list:
                     parsed = _parse_purchase_request_item(r)
@@ -588,7 +666,7 @@ async def get_completed_purchase_requests(user_id: Optional[UUID] = None) -> Lis
     return await _get_projected_purchase_requests(status_filter="completed")
 
 
-async def get_purchase_request_detail(request_id: str) -> Optional[Dict[str, Any]]:
+async def get_purchase_request_detail(request_id: str, user_id: Optional[UUID] = None) -> Optional[Dict[str, Any]]:
     """
     Fetches full request details.
     - If Admin Portal is online or reachable, fetches from remote and caches locally.
@@ -599,7 +677,7 @@ async def get_purchase_request_detail(request_id: str) -> Optional[Dict[str, Any
 
     if is_online or admin_circuit_breaker.allow_request():
         try:
-            token = await _generate_service_token()
+            token = await _generate_service_token(user_id)
             headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
             url = f"{ADMIN_API_BASE}/api/purchasing/requests/{request_id}"
             async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
