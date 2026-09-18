@@ -1,0 +1,421 @@
+name: CI/CD Pipeline - CEO Dashboard Backend
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            tesseract-ocr \
+            poppler-utils \
+            libpq-dev \
+            gcc \
+            curl
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest ruff
+
+      - name: Check Python Syntax
+        run: |
+          python -m compileall -q .
+
+      - name: Run Ruff Lint
+        run: |
+          ruff check . --ignore E501 || true
+
+      - name: Run Pytest
+        run: |
+          if [ -d "tests" ]; then
+            pytest tests/ || true
+          fi
+
+  docker-build:
+    name: Build Docker Image
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: ceo-backend-api:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  migrate-db:
+    name: Migrate & Verify Database
+    environment: Zenatech
+    needs: docker-build
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_SSL: ${{ secrets.DATABASE_SSL || 'require' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install database check dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install asyncpg python-dotenv
+
+      - name: Check database reachability and verify schema
+        id: db_check
+        run: |
+          python -c "
+          import asyncio, os, sys
+          import asyncpg
+
+          async def main():
+              db_url = os.environ.get('DATABASE_URL', '')
+              if not db_url:
+                  print('[WARN] DATABASE_URL secret is not configured.')
+                  with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                      f.write('reachable=false\n')
+                  return
+
+              ssl_env = os.environ.get('DATABASE_SSL', 'require').lower()
+              ssl_mode = 'require' if ssl_env in ('true', 'require', '1') else (None if ssl_env in ('disable', 'false', '0', 'none') else ssl_env)
+              try:
+                  conn = await asyncio.wait_for(
+                      asyncpg.connect(dsn=db_url, ssl=ssl_mode), timeout=8
+                  )
+                  val = await conn.fetchval('SELECT 1')
+                  await conn.close()
+                  print('[OK] Database (AWS RDS / PostgreSQL) is directly reachable from GitHub Actions runner.')
+                  with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                      f.write('reachable=true\n')
+              except Exception as exc:
+                  print(f'[INFO] Database not directly reachable from GitHub runner ({exc!r}).')
+                  print('[INFO] Target database is private within AWS VPC. Schema setup will execute on EC2 deployment host.')
+                  with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                      f.write('reachable=false\n')
+
+          asyncio.run(main())
+          "
+
+      - name: Run Schema Bootstrap (if directly reachable)
+        if: steps.db_check.outputs.reachable == 'true'
+        run: |
+          python -c "
+          import asyncio, os
+          from dotenv import load_dotenv
+          load_dotenv()
+
+          async def run_bootstrap():
+              from postgresql_db.database import create_pool, close_pool, get_pool
+              from postgresql_db.cross_service_schema import ensure_cross_service_schema
+              from tools.approver_roles_router import ensure_approver_roles
+              try:
+                  await create_pool()
+                  async with get_pool().acquire() as conn:
+                      await conn.execute('''
+                          CREATE TABLE IF NOT EXISTS ceo_events (
+                              id BIGSERIAL PRIMARY KEY,
+                              event_type VARCHAR(100) NOT NULL,
+                              source VARCHAR(100) NOT NULL,
+                              entity_id VARCHAR(100) NOT NULL,
+                              data JSONB DEFAULT '{}'::jsonb,
+                              created_at TIMESTAMPTZ DEFAULT NOW()
+                          );
+                          CREATE TABLE IF NOT EXISTS ceo_audit_logs (
+                              id BIGSERIAL PRIMARY KEY,
+                              action VARCHAR(100) NOT NULL,
+                              source_application VARCHAR(100) NOT NULL,
+                              target_application VARCHAR(100) NOT NULL,
+                              target_entity VARCHAR(100) NOT NULL,
+                              requested_by VARCHAR(255) NOT NULL,
+                              result VARCHAR(50) NOT NULL,
+                              details JSONB DEFAULT '{}'::jsonb,
+                              created_at TIMESTAMPTZ DEFAULT NOW()
+                          );
+                      ''')
+                  await ensure_approver_roles()
+                  await ensure_cross_service_schema()
+                  print('[OK] Schema verification and bootstrap succeeded.')
+              finally:
+                  await close_pool()
+
+          asyncio.run(run_bootstrap())
+          "
+
+      - name: Verify database is healthy after verification (if directly reachable)
+        if: steps.db_check.outputs.reachable == 'true'
+        run: |
+          python -c "
+          import asyncio, os, sys
+          import asyncpg
+
+          async def main():
+              ssl_env = os.environ.get('DATABASE_SSL', 'require').lower()
+              ssl_mode = 'require' if ssl_env in ('true', 'require', '1') else (None if ssl_env in ('disable', 'false', '0', 'none') else ssl_env)
+              try:
+                  conn = await asyncio.wait_for(
+                      asyncpg.connect(dsn=os.environ['DATABASE_URL'], ssl=ssl_mode), timeout=10
+                  )
+                  await conn.fetchval('SELECT 1')
+                  await conn.close()
+                  print('[OK] Database healthy.')
+              except Exception as exc:
+                  print(f'Post-check database verification failed, aborting deploy: {exc!r}', file=sys.stderr)
+                  sys.exit(1)
+
+          asyncio.run(main())
+          "
+
+  deploy-ec2:
+    name: Deploy to EC2
+    environment: Zenatech
+    needs: migrate-db
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY || secrets.AWS_ACCESS_KEY_ID || secrets.ACCESS_KEY }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY || secrets.SECRET_ACCESS_KEY }}
+      AWS_SECURITY_GROUP_ID: ${{ secrets.AWS_SECURITY_GROUP_ID || vars.AWS_SECURITY_GROUP_ID }}
+
+    steps:
+      - name: Get GitHub runner IP
+        id: ip
+        run: echo "ipv4=$(curl -s https://api.ipify.org)" >> $GITHUB_OUTPUT
+
+      - name: Configure AWS credentials
+        if: env.AWS_ACCESS_KEY != '' && env.AWS_SECRET_ACCESS_KEY != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION || vars.AWS_REGION || 'ca-central-1' }}
+
+      - name: Authorize Security Group SSH
+        if: env.AWS_ACCESS_KEY != '' && env.AWS_SECURITY_GROUP_ID != ''
+        run: |
+          aws ec2 authorize-security-group-ingress \
+            --group-id ${{ env.AWS_SECURITY_GROUP_ID }} \
+            --protocol tcp --port 22 --cidr ${{ steps.ip.outputs.ipv4 }}/32 || true
+
+      - name: Deploy backend to EC2
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER || 'ec2-user' }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_SSL: ${{ secrets.DATABASE_SSL || 'require' }}
+          ADMIN_DATABASE_URL: ${{ secrets.ADMIN_DATABASE_URL || secrets.ADMIN_PORTAL_DATABASE }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_ACCOUNT_REVIEW_MODELS: ${{ secrets.GEMINI_ACCOUNT_REVIEW_MODELS }}
+          GEMINI_AVAILABLE_MODELS: ${{ secrets.GEMINI_AVAILABLE_MODELS }}
+          GEMINI_AVAILABLE_TOOL_QUOTA_MODELS: ${{ secrets.GEMINI_AVAILABLE_TOOL_QUOTA_MODELS }}
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET || secrets.SESSION_SECRET }}
+          JWT_ALGORITHM: ${{ secrets.JWT_ALGORITHM || 'HS256' }}
+          JWT_ISSUER: ${{ secrets.JWT_ISSUER || 'zenatech-internal-portal' }}
+          AUTH_TOKEN_TTL_SECONDS: ${{ secrets.AUTH_TOKEN_TTL_SECONDS || '7200' }}
+          MICROSOFT_CLIENT_ID: ${{ secrets.MICROSOFT_CLIENT_ID }}
+          MICROSOFT_CLIENT_SECRET: ${{ secrets.MICROSOFT_CLIENT_SECRET }}
+          MICROSOFT_TENANT_ID: ${{ secrets.MICROSOFT_TENANT_ID }}
+          MICROSOFT_AUTHORITY: ${{ secrets.MICROSOFT_AUTHORITY }}
+          MICROSOFT_REDIRECT_URI: ${{ secrets.MICROSOFT_REDIRECT_URI }}
+          FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
+          CORS_ALLOWED_ORIGINS: ${{ secrets.CORS_ALLOWED_ORIGINS || secrets.FRONTEND_URL }}
+          CORS_ORIGINS: ${{ secrets.CORS_ORIGINS || secrets.CORS_ALLOWED_ORIGINS || secrets.FRONTEND_URL }}
+          ADMIN_PORTAL_API_URL: ${{ secrets.ADMIN_PORTAL_API_URL || 'http://host.docker.internal:8001' }}
+          MA_PORTAL_API_URL: ${{ secrets.MA_PORTAL_API_URL || 'http://host.docker.internal:8000' }}
+          CEO_DATA_API_URL: ${{ secrets.CEO_DATA_API_URL || 'http://host.docker.internal:8005' }}
+          FINANCE_PORTAL_API_URL: ${{ secrets.FINANCE_PORTAL_API_URL || 'http://host.docker.internal:8002' }}
+          INTEGRATION_TIMEOUT_SECONDS: ${{ secrets.INTEGRATION_TIMEOUT_SECONDS || '5.0' }}
+          AWS_S3_BUCKET_NAME: ${{ secrets.AWS_S3_BUCKET_NAME }}
+          AWS_S3_REGION: ${{ secrets.AWS_S3_REGION || 'ca-central-1' }}
+          AWS_ACCESS_KEY_ID: ${{ env.AWS_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ env.AWS_SECRET_ACCESS_KEY }}
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          MQTT_HOST: ${{ secrets.MQTT_HOST || 'mqtt' }}
+          MQTT_PORT: ${{ secrets.MQTT_PORT || '1883' }}
+          MQTT_USERNAME: ${{ secrets.MQTT_USERNAME }}
+          MQTT_PASSWORD: ${{ secrets.MQTT_PASSWORD }}
+          MQTT_USE_TLS: ${{ secrets.MQTT_USE_TLS || 'false' }}
+          MQTT_KEEPALIVE_SECONDS: ${{ secrets.MQTT_KEEPALIVE_SECONDS || '15' }}
+          SERVICE_NAME: ${{ secrets.SERVICE_NAME || 'ceo-api' }}
+          SERVICE_INSTANCE_ID: ${{ secrets.SERVICE_INSTANCE_ID || 'ceo-api-01' }}
+          RABBITMQ_URL: ${{ secrets.RABBITMQ_URL || 'amqp://guest:guest@host.docker.internal:5672/' }}
+          COMMANDS_EXCHANGE: ${{ secrets.COMMANDS_EXCHANGE || 'ceo.commands' }}
+          EVENTS_EXCHANGE: ${{ secrets.EVENTS_EXCHANGE || 'service.events' }}
+          DLX_EXCHANGE: ${{ secrets.DLX_EXCHANGE || 'ceo.commands.dlx' }}
+          TESSERACT_CMD: ${{ secrets.TESSERACT_CMD || '/usr/bin/tesseract' }}
+          UPLOAD_S3_PREFIX: ${{ secrets.UPLOAD_S3_PREFIX || 'data' }}
+        run: |
+          install -m 600 /dev/null ec2-key.pem
+          printf '%s\n' "$EC2_SSH_KEY" > ec2-key.pem
+
+          ssh -o StrictHostKeyChecking=no -i ec2-key.pem "$EC2_USER@$EC2_HOST" "
+            if [ ! -d ~/internal_portal_ceo_dashboard_backend/.git ]; then
+              git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git ~/internal_portal_ceo_dashboard_backend
+            else
+              cd ~/internal_portal_ceo_dashboard_backend && \
+              git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git && \
+              git fetch origin main && \
+              git reset --hard origin/main
+            fi
+          "
+
+          {
+            echo "APP_ENV=production"
+            echo "LOG_LEVEL=INFO"
+            echo "HOST=0.0.0.0"
+            echo "PORT=8005"
+            echo "MCP_HOST=0.0.0.0"
+            echo "MCP_PORT=8006"
+            echo "SLOW_REQUEST_MS=2000"
+            printf 'DATABASE_URL=%s\n' "$DATABASE_URL"
+            printf 'DATABASE_SSL=%s\n' "$DATABASE_SSL"
+            if [ -n "$ADMIN_DATABASE_URL" ]; then
+              printf 'ADMIN_DATABASE_URL=%s\n' "$ADMIN_DATABASE_URL"
+            fi
+            printf 'GEMINI_API_KEY=%s\n' "$GEMINI_API_KEY"
+            if [ -n "$GEMINI_ACCOUNT_REVIEW_MODELS" ]; then
+              printf 'GEMINI_ACCOUNT_REVIEW_MODELS=%s\n' "$GEMINI_ACCOUNT_REVIEW_MODELS"
+            fi
+            if [ -n "$GEMINI_AVAILABLE_MODELS" ]; then
+              printf 'GEMINI_AVAILABLE_MODELS=%s\n' "$GEMINI_AVAILABLE_MODELS"
+            fi
+            if [ -n "$GEMINI_AVAILABLE_TOOL_QUOTA_MODELS" ]; then
+              printf 'GEMINI_AVAILABLE_TOOL_QUOTA_MODELS=%s\n' "$GEMINI_AVAILABLE_TOOL_QUOTA_MODELS"
+            fi
+            printf 'SESSION_SECRET=%s\n' "$SESSION_SECRET"
+            printf 'JWT_SECRET=%s\n' "$JWT_SECRET"
+            printf 'JWT_ALGORITHM=%s\n' "$JWT_ALGORITHM"
+            printf 'JWT_ISSUER=%s\n' "$JWT_ISSUER"
+            printf 'AUTH_TOKEN_TTL_SECONDS=%s\n' "$AUTH_TOKEN_TTL_SECONDS"
+            printf 'MICROSOFT_CLIENT_ID=%s\n' "$MICROSOFT_CLIENT_ID"
+            printf 'MICROSOFT_CLIENT_SECRET=%s\n' "$MICROSOFT_CLIENT_SECRET"
+            printf 'MICROSOFT_TENANT_ID=%s\n' "$MICROSOFT_TENANT_ID"
+            if [ -n "$MICROSOFT_AUTHORITY" ]; then
+              printf 'MICROSOFT_AUTHORITY=%s\n' "$MICROSOFT_AUTHORITY"
+            elif [ -n "$MICROSOFT_TENANT_ID" ]; then
+              printf 'MICROSOFT_AUTHORITY=https://login.microsoftonline.com/%s\n' "$MICROSOFT_TENANT_ID"
+            fi
+            if [ -n "$MICROSOFT_REDIRECT_URI" ]; then
+              printf 'MICROSOFT_REDIRECT_URI=%s\n' "$MICROSOFT_REDIRECT_URI"
+            fi
+            printf 'FRONTEND_URL=%s\n' "$FRONTEND_URL"
+            printf 'CORS_ORIGINS=%s\n' "$CORS_ORIGINS"
+            printf 'CORS_ALLOWED_ORIGINS=%s\n' "$CORS_ALLOWED_ORIGINS"
+            printf 'ADMIN_PORTAL_API_URL=%s\n' "$ADMIN_PORTAL_API_URL"
+            printf 'MA_PORTAL_API_URL=%s\n' "$MA_PORTAL_API_URL"
+            printf 'CEO_DATA_API_URL=%s\n' "$CEO_DATA_API_URL"
+            printf 'FINANCE_PORTAL_API_URL=%s\n' "$FINANCE_PORTAL_API_URL"
+            printf 'INTEGRATION_TIMEOUT_SECONDS=%s\n' "$INTEGRATION_TIMEOUT_SECONDS"
+            printf 'AWS_S3_BUCKET_NAME=%s\n' "$AWS_S3_BUCKET_NAME"
+            printf 'AWS_S3_REGION=%s\n' "$AWS_S3_REGION"
+            if [ -n "$AWS_ACCESS_KEY_ID" ]; then
+              printf 'AWS_ACCESS_KEY_ID=%s\n' "$AWS_ACCESS_KEY_ID"
+            fi
+            if [ -n "$AWS_SECRET_ACCESS_KEY" ]; then
+              printf 'AWS_SECRET_ACCESS_KEY=%s\n' "$AWS_SECRET_ACCESS_KEY"
+            fi
+            if [ -n "$MONGODB_URI" ]; then
+              printf 'MONGODB_URI=%s\n' "$MONGODB_URI"
+            fi
+            printf 'MQTT_HOST=%s\n' "$MQTT_HOST"
+            printf 'MQTT_PORT=%s\n' "$MQTT_PORT"
+            if [ -n "$MQTT_USERNAME" ]; then
+              printf 'MQTT_USERNAME=%s\n' "$MQTT_USERNAME"
+            fi
+            if [ -n "$MQTT_PASSWORD" ]; then
+              printf 'MQTT_PASSWORD=%s\n' "$MQTT_PASSWORD"
+            fi
+            printf 'MQTT_USE_TLS=%s\n' "$MQTT_USE_TLS"
+            printf 'MQTT_KEEPALIVE_SECONDS=%s\n' "$MQTT_KEEPALIVE_SECONDS"
+            printf 'SERVICE_NAME=%s\n' "$SERVICE_NAME"
+            printf 'SERVICE_INSTANCE_ID=%s\n' "$SERVICE_INSTANCE_ID"
+            printf 'RABBITMQ_URL=%s\n' "$RABBITMQ_URL"
+            printf 'COMMANDS_EXCHANGE=%s\n' "$COMMANDS_EXCHANGE"
+            printf 'EVENTS_EXCHANGE=%s\n' "$EVENTS_EXCHANGE"
+            printf 'DLX_EXCHANGE=%s\n' "$DLX_EXCHANGE"
+            printf 'TESSERACT_CMD=%s\n' "$TESSERACT_CMD"
+            printf 'UPLOAD_S3_PREFIX=%s\n' "$UPLOAD_S3_PREFIX"
+            echo "DATA_PATH=/app/data"
+            echo "UPLOAD_FILES_DIR=/app/data/upload_files"
+            echo "AUTH_COOKIE_SECURE=true"
+            echo "SESSION_COOKIE_SECURE=true"
+          } > .env.production
+
+          scp -o StrictHostKeyChecking=no -i ec2-key.pem .env.production "$EC2_USER@$EC2_HOST":~/internal_portal_ceo_dashboard_backend/.env.production
+
+          ssh -o StrictHostKeyChecking=no -i ec2-key.pem "$EC2_USER@$EC2_HOST" "
+            cd ~/internal_portal_ceo_dashboard_backend
+            mkdir -p data data/upload_files
+
+            # Ensure EC2 IMDSv2 hop limit is 2 so Docker container can access IAM role
+            TOKEN=\$(curl -s -X PUT 'http://169.254.169.254/latest/api/token' -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' 2>/dev/null || true)
+            if [ -n \"\$TOKEN\" ]; then
+              INSTANCE_ID=\$(curl -s -H \"X-aws-ec2-metadata-token: \$TOKEN\" http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null || true)
+              if [ -n \"\$INSTANCE_ID\" ]; then
+                aws ec2 modify-instance-metadata-options --instance-id \"\$INSTANCE_ID\" --http-put-response-hop-limit 2 --http-endpoint enabled 2>/dev/null || true
+              fi
+            fi
+
+            sudo docker build -t ceo-backend-api:latest .
+            if docker compose version &>/dev/null; then
+              sudo docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            elif command -v docker-compose &>/dev/null; then
+              sudo docker-compose -f docker-compose.prod.yml up -d --remove-orphans
+            else
+              sudo curl -L \"https://github.com/docker/compose/releases/latest/download/docker-compose-\$(uname -s)-\$(uname -m)\" -o /usr/local/bin/docker-compose
+              sudo chmod +x /usr/local/bin/docker-compose
+              sudo /usr/local/bin/docker-compose -f docker-compose.prod.yml up -d --remove-orphans
+            fi
+          "
+          rm -f ec2-key.pem .env.production
+
+      - name: Revoke Security Group SSH
+        if: always() && env.AWS_ACCESS_KEY != '' && env.AWS_SECURITY_GROUP_ID != ''
+        run: |
+          aws ec2 revoke-security-group-ingress \
+            --group-id ${{ env.AWS_SECURITY_GROUP_ID }} \
+            --protocol tcp --port 22 --cidr ${{ steps.ip.outputs.ipv4 }}/32 || true

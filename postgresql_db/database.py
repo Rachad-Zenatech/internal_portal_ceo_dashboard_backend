@@ -13,20 +13,31 @@ _pool: asyncpg.Pool | None = None
 _admin_pool: asyncpg.Pool | None = None
 logger = logging.getLogger(__name__)
 
+def _resolve_ssl_mode() -> str | None:
+    ssl_env = os.getenv("DATABASE_SSL", "require").strip().lower()
+    if ssl_env in ("disable", "false", "0", "none", "no"):
+        return None
+    if ssl_env in ("true", "require", "1"):
+        return "require"
+    return ssl_env
+
+
 async def create_pool():
     """Creates the connection pool if it doesn't exist yet, then returns it."""
     global _pool
     if _pool is None:
         logger.info("Initializing PostgreSQL connection pool", extra={"event": "database_pool_initializing"})
-        use_ssl = "require" if os.getenv("DATABASE_SSL", "false").lower() in ("true", "require", "1") else None
+        use_ssl = _resolve_ssl_mode()
+        min_size = int(os.getenv("DATABASE_POOL_MIN_SIZE") or os.getenv("DB_MIN_CONNECTIONS") or "2")
+        max_size = int(os.getenv("DATABASE_POOL_MAX_SIZE") or os.getenv("DB_MAX_CONNECTIONS") or "15")
         retries = 5
         for attempt in range(retries):
             try:
                 _pool = await asyncpg.create_pool(
                     dsn=os.environ["DATABASE_URL"],
                     ssl=use_ssl,
-                    min_size=int(os.getenv("DATABASE_POOL_MIN_SIZE", "2")),
-                    max_size=int(os.getenv("DATABASE_POOL_MAX_SIZE", "15")),
+                    min_size=min_size,
+                    max_size=max_size,
                     timeout=15.0,
                     command_timeout=30.0,
                     max_inactive_connection_lifetime=60.0,
@@ -56,15 +67,17 @@ async def create_admin_pool():
     admin_dsn = os.environ.get("ADMIN_DATABASE_URL") or os.environ.get("ADMIN_PORTAL_DATABASE") or os.environ.get("ADMIN_PORTAL_DATABASE_URL")
     if _admin_pool is None and admin_dsn:
         logger.info("Initializing Admin PostgreSQL connection pool", extra={"event": "admin_database_pool_initializing"})
-        use_ssl = "require" if os.getenv("DATABASE_SSL", "false").lower() in ("true", "require", "1") else None
+        use_ssl = _resolve_ssl_mode()
+        min_size = 1
+        max_size = int(os.getenv("ADMIN_DATABASE_POOL_MAX_SIZE") or "5")
         retries = 5
         for attempt in range(retries):
             try:
                 _admin_pool = await asyncpg.create_pool(
                     dsn=admin_dsn,
                     ssl=use_ssl,
-                    min_size=1,
-                    max_size=int(os.getenv("ADMIN_DATABASE_POOL_MAX_SIZE", "5")),
+                    min_size=min_size,
+                    max_size=max_size,
                     timeout=15.0,
                     command_timeout=30.0,
                     max_inactive_connection_lifetime=60.0,

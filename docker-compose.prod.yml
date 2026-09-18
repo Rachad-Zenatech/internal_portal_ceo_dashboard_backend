@@ -1,14 +1,15 @@
-﻿services:
+services:
   api:
     build:
       context: .
       dockerfile: Dockerfile
 
-    image: admin-backend-api:latest
+    image: ceo-backend-api:latest
     container_name: ceo_backend_api_prod
 
     ports:
-      - "80:8000"
+      - "8005:8005"
+      - "8006:8006"
 
     volumes:
       - ./data:/app/data
@@ -19,6 +20,11 @@
 
     environment:
       - APP_ENV=production
+      - PORT=8005
+      - MCP_PORT=8006
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
     restart: unless-stopped
 
@@ -28,7 +34,7 @@
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live')"
+          "import urllib.request; urllib.request.urlopen('http://localhost:8005/health/live')"
         ]
       interval: 30s
       timeout: 10s

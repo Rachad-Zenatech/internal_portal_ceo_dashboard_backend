@@ -108,6 +108,12 @@ class CeoActionPayload(BaseModel):
     note: Optional[str] = None
 
 
+class CeoBulkActionPayload(BaseModel):
+    request_ids: List[str] = Field(..., min_items=1, description="List of purchase request IDs")
+    action: str = Field(..., description="APPROVE, REJECT, CANCEL")
+    note: Optional[str] = Field(None, description="Optional note or comment for the bulk action")
+
+
 @router.get("/events/stream")
 async def stream_ceo_events():
     """
@@ -183,7 +189,6 @@ async def list_pending_approvals():
     reqs = await get_pending_purchase_requests()
     try:
         from services.notification_service import sync_approval_notifications
-        asyncio.create_task(sync_approval_notifications(reqs))
         create_background_task(sync_approval_notifications(reqs), name="sync-approval-notifications")
     except Exception as exc:
         logger.warning(f"Failed to sync notifications on list approvals: {exc}")
@@ -210,7 +215,7 @@ async def get_approval_request_detail(request_id: str):
     return detail
 
 
-@router.post("/approvals/{request_id}/action", status_code=202)
+@router.post("/approvals/{request_id}/action")
 async def execute_approval_action(
     request_id: str,
     payload: CeoActionPayload,
@@ -218,9 +223,13 @@ async def execute_approval_action(
     user_id: Optional[UUID] = Depends(get_current_user_id_dependency),
 ):
     """
-    Dispatches a durable asynchronous command to approve, reject, or cancel a purchase request.
-    Returns 202 Accepted with tracking command_id.
+    Executes approval or rejection for a purchase request.
+    - If Admin Portal is reachable, transitions live immediately and returns 200 SUCCEEDED.
+    - If Admin Portal is offline, queues durable asynchronous command and returns 202 QUEUED.
     """
+    from services.admin_integration_service import execute_purchase_transition
+    from services.integration_resilience import admin_circuit_breaker
+    from services.service_status_registry import service_status_registry
     from services.command_service import command_service
     from services.connectors.base_connector import UserContext
 
@@ -234,6 +243,83 @@ async def execute_approval_action(
         display_name="CEO Executive",
     )
 
+    # 1. Try immediate live execution against Admin Portal if reachable
+    if service_status_registry.is_service_online("admin") or admin_circuit_breaker.allow_request():
+        transition_res = await execute_purchase_transition(
+            request_id=request_id,
+            action=action_type,
+            note=payload.note,
+            user_id=user_id,
+        )
+        if transition_res.get("success"):
+            new_status = f"{action_type}D" if action_type in ["APPROVE", "REJECT"] else "CANCELLED"
+            # Update local PostgreSQL projection store immediately
+            try:
+                from postgresql_db.database import get_pool
+                pool = get_pool()
+                async with pool.acquire() as conn:
+                    await conn.execute(
+                        """
+                        UPDATE ceo_service_projections
+                        SET source_status = $1,
+                            data = jsonb_set(
+                                jsonb_set(data, '{status}', to_jsonb($1::text)),
+                                '{raw_status}', to_jsonb($1::text)
+                            ),
+                            updated_at = NOW()
+                        WHERE service_name = 'administration' AND resource_type = 'purchase_request' AND resource_id = $2
+                        """,
+                        new_status,
+                        str(request_id),
+                    )
+                    await conn.execute(
+                        """
+                        INSERT INTO ceo_audit_logs (action, source_application, target_application, target_entity, requested_by, result, details, created_at)
+                        VALUES ($1, 'ceo-portal', 'administration', $2, $3, 'SUCCESS', $4, NOW())
+                        """,
+                        f"PURCHASE_REQUEST_{action_type}D",
+                        f"request-{request_id}",
+                        "CEO Executive",
+                        json.dumps({"request_id": request_id, "action": action_type, "note": payload.note}),
+                    )
+            except Exception as proj_err:
+                logger.debug(f"Note updating local projection on approval: {proj_err}")
+
+            # Broadcast event to connected WebSocket clients for instant UI refresh
+            try:
+                from tools.service_status_router import ws_manager
+                ws_msg = {
+                    "eventType": f"PURCHASE_REQUEST_{action_type}D",
+                    "service": "admin",
+                    "entityId": str(request_id),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "data": {"request_id": request_id, "action": action_type, "note": payload.note},
+                }
+                create_background_task(ws_manager.broadcast(ws_msg), name=f"ws-approval-{request_id}")
+            except Exception:
+                pass
+
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "status": "SUCCEEDED",
+                    "command_id": str(uuid4()),
+                    "target_service": "administration",
+                    "resource_type": "request",
+                    "resource_id": str(request_id),
+                    "command_type": cmd_type,
+                    "message": f"Purchase request {action_type.lower()}d successfully.",
+                    "data": transition_res.get("data"),
+                },
+            )
+        elif transition_res.get("code") not in ["SERVICE_UNAVAILABLE", "CONNECT_ERROR"]:
+            # Domain-level rejection (e.g. invalid state transition, not allowed, validation error)
+            raise HTTPException(
+                status_code=400,
+                detail=transition_res.get("error") or f"Administration service rejected {action_type} action."
+            )
+
+    # 2. Offline fallback: Submit durable queued command
     result = await command_service.submit_command(
         target_service="administration",
         resource_type="request",
@@ -243,8 +329,138 @@ async def execute_approval_action(
         user=user_ctx,
         idempotency_key=idempotency_key,
     )
+    return JSONResponse(status_code=202, content=result)
 
-    return result
+
+@router.post("/approvals/bulk-action")
+async def execute_bulk_approval_action(
+    payload: CeoBulkActionPayload,
+    user_id: Optional[UUID] = Depends(get_current_user_id_dependency),
+):
+    """
+    Executes bulk approval or rejection for multiple purchase requests.
+    - If Admin Portal is reachable, transitions requests in batch and returns 200 SUCCEEDED.
+    - If Admin Portal is offline, queues durable asynchronous commands for each request and returns 202 QUEUED.
+    """
+    from services.admin_integration_service import execute_batch_purchase_transition
+    from services.integration_resilience import admin_circuit_breaker
+    from services.service_status_registry import service_status_registry
+    from services.command_service import command_service
+    from services.connectors.base_connector import UserContext
+    from postgresql_db.database import get_pool
+
+    action_type = payload.action.upper().strip()
+    if action_type not in ["APPROVE", "REJECT", "CANCEL"]:
+        raise HTTPException(status_code=400, detail="Invalid action. Must be APPROVE, REJECT, or CANCEL.")
+
+    request_ids = [str(r).strip() for r in payload.request_ids if str(r).strip()]
+    if not request_ids:
+        raise HTTPException(status_code=400, detail="No valid request IDs provided.")
+
+    cmd_type = f"{action_type}_REQUEST"
+    user_ctx = UserContext(
+        user_id=str(user_id) if user_id else "ceo-executive",
+        display_name="CEO Executive",
+    )
+
+    # 1. Try immediate live execution against Admin Portal if reachable
+    if service_status_registry.is_service_online("admin") or admin_circuit_breaker.allow_request():
+        transition_res = await execute_batch_purchase_transition(
+            request_ids=request_ids,
+            action=action_type,
+            note=payload.note,
+            user_id=user_id,
+        )
+        if transition_res.get("success"):
+            new_status = f"{action_type}D" if action_type in ["APPROVE", "REJECT"] else "CANCELLED"
+            # Update local PostgreSQL projection store for all affected requests
+            try:
+                pool = get_pool()
+                async with pool.acquire() as conn:
+                    for req_id in request_ids:
+                        await conn.execute(
+                            """
+                            UPDATE ceo_service_projections
+                            SET source_status = $1,
+                                data = jsonb_set(
+                                    jsonb_set(data, '{status}', to_jsonb($1::text)),
+                                    '{raw_status}', to_jsonb($1::text)
+                                ),
+                                updated_at = NOW()
+                            WHERE service_name = 'administration' AND resource_type = 'purchase_request' AND resource_id = $2
+                            """,
+                            new_status,
+                            str(req_id),
+                        )
+                        await conn.execute(
+                            """
+                            INSERT INTO ceo_audit_logs (action, source_application, target_application, target_entity, requested_by, result, details, created_at)
+                            VALUES ($1, 'ceo-portal', 'administration', $2, $3, 'SUCCESS', $4, NOW())
+                            """,
+                            f"PURCHASE_REQUEST_BULK_{action_type}D",
+                            f"request-{req_id}",
+                            "CEO Executive",
+                            json.dumps({"request_id": req_id, "action": action_type, "note": payload.note, "bulk": True}),
+                        )
+            except Exception as proj_err:
+                logger.debug(f"Note updating local projection on bulk approval: {proj_err}")
+
+            # Broadcast WebSocket events for all items
+            try:
+                from tools.service_status_router import ws_manager
+                for req_id in request_ids:
+                    ws_msg = {
+                        "eventType": f"PURCHASE_REQUEST_{action_type}D",
+                        "service": "admin",
+                        "entityId": str(req_id),
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "data": {"request_id": req_id, "action": action_type, "note": payload.note, "bulk": True},
+                    }
+                    create_background_task(ws_manager.broadcast(ws_msg), name=f"ws-bulk-approval-{req_id}")
+            except Exception:
+                pass
+
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "status": "SUCCEEDED",
+                    "target_service": "administration",
+                    "resource_type": "request",
+                    "request_ids": request_ids,
+                    "command_type": cmd_type,
+                    "message": f"Successfully {action_type.lower()}d {len(request_ids)} purchase requests.",
+                    "data": transition_res.get("data"),
+                },
+            )
+        elif transition_res.get("code") not in ["SERVICE_UNAVAILABLE", "CONNECT_ERROR"]:
+            # Domain rejection
+            raise HTTPException(
+                status_code=400,
+                detail=transition_res.get("error") or f"Administration service rejected bulk {action_type} action."
+            )
+
+    # 2. Offline fallback: Submit durable queued command for each request
+    queued_results = []
+    for req_id in request_ids:
+        res = await command_service.submit_command(
+            target_service="administration",
+            resource_type="request",
+            resource_id=req_id,
+            command_type=cmd_type,
+            payload={"action": action_type, "note": payload.note, "bulk": True},
+            user=user_ctx,
+        )
+        queued_results.append(res)
+
+    return JSONResponse(
+        status_code=202,
+        content={
+            "status": "QUEUED",
+            "message": f"Queued {len(request_ids)} {action_type.lower()} commands. They will execute when Administration service reconnects.",
+            "request_ids": request_ids,
+            "commands": queued_results,
+        },
+    )
 
 
 @router.get("/commands/{command_id}/status")

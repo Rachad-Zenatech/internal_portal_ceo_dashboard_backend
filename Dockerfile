@@ -3,9 +3,13 @@ FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     APP_ENV=production \
-    TESSERACT_CMD=/usr/bin/tesseract \
+    PORT=8005 \
+    HOST=0.0.0.0 \
     MCP_HOST=0.0.0.0 \
-    MCP_PORT=8001
+    MCP_PORT=8006 \
+    TESSERACT_CMD=/usr/bin/tesseract \
+    DATA_PATH=/app/data \
+    UPLOAD_FILES_DIR=/app/data/upload_files
 
 WORKDIR /app
 
@@ -16,6 +20,7 @@ RUN apt-get update \
     build-essential \
     python3-dev \
     libpq-dev \
+    postgresql-client \
     tesseract-ocr \
     poppler-utils \
     gcc \
@@ -31,17 +36,17 @@ RUN pip install --no-cache-dir --upgrade pip \
 # Copy application source code.
 COPY . .
 
-# Create the persistent-data directory and a non-root application user.
+# Create the persistent-data directories and a non-root application user.
 RUN useradd --create-home --uid 10001 appuser \
-    && mkdir -p /app/data \
+    && mkdir -p /app/data /app/data/upload_files \
     && chown -R appuser:appuser /app
 
 USER appuser
 
-EXPOSE 8000 8001
+EXPOSE 8005 8006 8000
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live')" || exit 1
+    CMD python -c "import os, urllib.request; port = os.getenv('PORT', '8005'); urllib.request.urlopen(f'http://localhost:{port}/health/live')" || exit 1
 
 # Start both FastAPI (background) and MCP server (foreground)
-CMD ["sh", "-c", "uvicorn server:app --host 0.0.0.0 --port 8000 --workers 1 & python server.py"]
+CMD ["sh", "-c", "uvicorn server:app --host 0.0.0.0 --port ${PORT:-8005} --workers 1 & python server.py"]

@@ -543,3 +543,94 @@ async def list_users(is_active: Optional[bool] = True):
     except Exception as u_read_err:
         logger.warning(f"Error reading users fallback: {u_read_err}")
         return []
+
+
+async def _forward_request_to_admin(method: str, path: str, json_body: Optional[Any] = None, params: Optional[dict] = None):
+    token = await _generate_service_token()
+    headers = {"Authorization": f"Bearer {token}"}
+    clean_path = path if path.startswith("/api/") else f"/api{path if path.startswith('/') else f'/{path}'}"
+    url = f"{ADMIN_API_BASE}{clean_path}"
+    async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
+        try:
+            if method.upper() == "GET":
+                resp = await client.get(url, headers=headers, params=params)
+            elif method.upper() == "POST":
+                resp = await client.post(url, headers=headers, json=json_body)
+            elif method.upper() == "PUT":
+                resp = await client.put(url, headers=headers, json=json_body)
+            elif method.upper() == "DELETE":
+                resp = await client.delete(url, headers=headers)
+            else:
+                raise HTTPException(status_code=405, detail="Method not allowed")
+            if resp.status_code >= 400:
+                try:
+                    err_detail = resp.json().get("detail", resp.text)
+                except Exception:
+                    err_detail = resp.text
+                raise HTTPException(status_code=resp.status_code, detail=err_detail)
+            return resp.json()
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.error(f"Error forwarding {method} {clean_path} to admin: {exc}")
+            raise HTTPException(status_code=502, detail=f"Admin Portal unavailable: {str(exc)}")
+
+
+@router.get("/purchasing/departments", dependencies=[Depends(get_current_user_id_dependency)])
+@router.get("/api/purchasing/departments", dependencies=[Depends(get_current_user_id_dependency)])
+async def get_departments_proxy():
+    return await _forward_request_to_admin("GET", "/api/purchasing/departments")
+
+
+@router.get("/purchasing/department-approvers", dependencies=[Depends(get_current_user_id_dependency)])
+@router.get("/api/purchasing/department-approvers", dependencies=[Depends(get_current_user_id_dependency)])
+async def get_department_approvers_proxy():
+    return await _forward_request_to_admin("GET", "/api/purchasing/department-approvers")
+
+
+@router.post("/purchasing/department-approvers/assign", dependencies=[Depends(get_current_user_id_dependency)])
+@router.post("/api/purchasing/department-approvers/assign", dependencies=[Depends(get_current_user_id_dependency)])
+async def assign_department_approver_proxy(payload: dict):
+    return await _forward_request_to_admin("POST", "/api/purchasing/department-approvers/assign", json_body=payload)
+
+
+@router.post("/purchasing/department-approvers/batch-assign", dependencies=[Depends(get_current_user_id_dependency)])
+@router.post("/api/purchasing/department-approvers/batch-assign", dependencies=[Depends(get_current_user_id_dependency)])
+async def batch_assign_department_approvers_proxy(payload: dict):
+    return await _forward_request_to_admin("POST", "/api/purchasing/department-approvers/batch-assign", json_body=payload)
+
+
+@router.get("/purchasing/department-groups", dependencies=[Depends(get_current_user_id_dependency)])
+@router.get("/api/purchasing/department-groups", dependencies=[Depends(get_current_user_id_dependency)])
+async def get_department_groups_proxy():
+    return await _forward_request_to_admin("GET", "/api/purchasing/department-groups")
+
+
+@router.post("/purchasing/department-groups", dependencies=[Depends(get_current_user_id_dependency)])
+@router.post("/api/purchasing/department-groups", dependencies=[Depends(get_current_user_id_dependency)])
+async def create_department_group_proxy(payload: dict):
+    return await _forward_request_to_admin("POST", "/api/purchasing/department-groups", json_body=payload)
+
+
+@router.put("/purchasing/department-groups/{id}", dependencies=[Depends(get_current_user_id_dependency)])
+@router.put("/api/purchasing/department-groups/{id}", dependencies=[Depends(get_current_user_id_dependency)])
+async def update_department_group_proxy(id: int, payload: dict):
+    return await _forward_request_to_admin("PUT", f"/api/purchasing/department-groups/{id}", json_body=payload)
+
+
+@router.delete("/purchasing/department-groups/{id}", dependencies=[Depends(get_current_user_id_dependency)])
+@router.delete("/api/purchasing/department-groups/{id}", dependencies=[Depends(get_current_user_id_dependency)])
+async def delete_department_group_proxy(id: int):
+    return await _forward_request_to_admin("DELETE", f"/api/purchasing/department-groups/{id}")
+
+
+@router.post("/purchasing/department-groups/move", dependencies=[Depends(get_current_user_id_dependency)])
+@router.post("/api/purchasing/department-groups/move", dependencies=[Depends(get_current_user_id_dependency)])
+async def move_department_group_proxy(payload: dict):
+    return await _forward_request_to_admin("POST", "/api/purchasing/department-groups/move", json_body=payload)
+
+
+@router.post("/purchasing/department-groups/assign-approvers", dependencies=[Depends(get_current_user_id_dependency)])
+@router.post("/api/purchasing/department-groups/assign-approvers", dependencies=[Depends(get_current_user_id_dependency)])
+async def assign_group_approvers_proxy(payload: dict):
+    return await _forward_request_to_admin("POST", "/api/purchasing/department-groups/assign-approvers", json_body=payload)
