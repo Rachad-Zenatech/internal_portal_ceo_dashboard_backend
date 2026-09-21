@@ -185,7 +185,7 @@ jobs:
               ssl_mode = 'require' if ssl_env in ('true', 'require', '1') else (None if ssl_env in ('disable', 'false', '0', 'none') else ssl_mode)
               try:
                   conn = await asyncio.wait_for(
-                      asyncpg.connect(dsn=db_url, ssl=ssl_mode), timeout=8
+                      asyncpg.connect(dsn=db_url, ssl=ssl_mode, statement_cache_size=0), timeout=8
                   )
                   val = await conn.fetchval('SELECT 1')
                   await conn.close()
@@ -213,8 +213,8 @@ jobs:
           async def run_bootstrap():
               db_url = os.environ.get('DATABASE_URL', '')
               ssl_env = os.environ.get('DATABASE_SSL', 'require').lower()
-              ssl_mode = 'require' if ssl_env in ('true', 'require', '1') else (None if ssl_env in ('disable', 'false', '0', 'none') else ssl_env)
-              conn = await asyncpg.connect(dsn=db_url, ssl=ssl_mode)
+              ssl_mode = 'require' if ssl_env in ('true', 'require', '1') else (None if ssl_env in ('disable', 'false', '0', 'none') else ssl_mode)
+              conn = await asyncpg.connect(dsn=db_url, ssl=ssl_mode, statement_cache_size=0)
               try:
                   await conn.execute('''
                       CREATE TABLE IF NOT EXISTS ceo_events (
@@ -339,7 +339,7 @@ jobs:
               ssl_mode = 'require' if ssl_env in ('true', 'require', '1') else (None if ssl_env in ('disable', 'false', '0', 'none') else ssl_env)
               try:
                   conn = await asyncio.wait_for(
-                      asyncpg.connect(dsn=os.environ['DATABASE_URL'], ssl=ssl_mode), timeout=10
+                      asyncpg.connect(dsn=os.environ['DATABASE_URL'], ssl=ssl_mode, statement_cache_size=0), timeout=10
                   )
                   await conn.fetchval('SELECT 1')
                   await conn.close()
