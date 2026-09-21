@@ -407,8 +407,7 @@ jobs:
           MICROSOFT_AUTHORITY: ${{ secrets.MICROSOFT_AUTHORITY }}
           MICROSOFT_REDIRECT_URI: ${{ secrets.MICROSOFT_REDIRECT_URI }}
           FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
-          CORS_ALLOWED_ORIGINS: ${{ secrets.CORS_ALLOWED_ORIGINS || secrets.FRONTEND_URL }}
-          CORS_ORIGINS: ${{ secrets.CORS_ORIGINS || secrets.CORS_ALLOWED_ORIGINS || secrets.FRONTEND_URL }}
+          CORS_ALLOWED_ORIGINS: ${{ secrets.CORS_ALLOWED_ORIGINS || secrets.CORS_ORIGINS || secrets.FRONTEND_URL }}
           ADMIN_PORTAL_API_URL: ${{ secrets.ADMIN_PORTAL_API_URL || 'http://host.docker.internal:8001' }}
           MA_PORTAL_API_URL: ${{ secrets.MA_PORTAL_API_URL || 'http://host.docker.internal:8000' }}
           CEO_DATA_API_URL: ${{ secrets.CEO_DATA_API_URL || 'http://host.docker.internal:8005' }}
@@ -496,7 +495,6 @@ jobs:
               printf 'MICROSOFT_REDIRECT_URI=%s\n' "$MICROSOFT_REDIRECT_URI"
             fi
             printf 'FRONTEND_URL=%s\n' "$FRONTEND_URL"
-            printf 'CORS_ORIGINS=%s\n' "$CORS_ORIGINS"
             printf 'CORS_ALLOWED_ORIGINS=%s\n' "$CORS_ALLOWED_ORIGINS"
             printf 'ADMIN_PORTAL_API_URL=%s\n' "$ADMIN_PORTAL_API_URL"
             printf 'MA_PORTAL_API_URL=%s\n' "$MA_PORTAL_API_URL"
