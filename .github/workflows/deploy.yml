@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   lint-and-test:
@@ -45,6 +46,7 @@ jobs:
 
       - name: Check Python Syntax
         run: |
+          python -m py_compile server.py
           python -m compileall -q .
 
       - name: Run Ruff Lint
@@ -55,6 +57,66 @@ jobs:
         run: |
           if [ -d "tests" ]; then
             pytest tests/ || true
+          fi
+
+  check-environment:
+    name: Verify GitHub Environment & Secrets
+    environment: Zenatech
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check if environment exists in GitHub
+        env:
+          TARGET_ENV: Zenatech
+        run: |
+          echo "Verifying environment '${TARGET_ENV}' in repository '${{ github.repository }}'..."
+          HTTP_STATUS=$(curl -s -o /tmp/env_response.json -w "%{http_code}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN || github.token }}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${{ github.repository }}/environments/${TARGET_ENV}")
+
+          if [ "$HTTP_STATUS" -eq 200 ]; then
+            echo "GitHub Environment '${TARGET_ENV}' verified."
+          else
+            echo "::warning::GitHub Environment '${TARGET_ENV}' returned status ${HTTP_STATUS}. Proceeding with repository-level and environment secrets."
+          fi
+
+      - name: Validate Required Environment Secrets
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+          MICROSOFT_CLIENT_ID: ${{ secrets.MICROSOFT_CLIENT_ID }}
+          MICROSOFT_CLIENT_SECRET: ${{ secrets.MICROSOFT_CLIENT_SECRET }}
+          MICROSOFT_TENANT_ID: ${{ secrets.MICROSOFT_TENANT_ID }}
+          FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          missing_secrets=()
+
+          check_secret() {
+            local name="$1"
+            local val="$2"
+            if [ -z "$val" ]; then
+              missing_secrets+=("$name")
+            fi
+          }
+
+          check_secret "EC2_HOST" "$EC2_HOST"
+          check_secret "EC2_SSH_KEY" "$EC2_SSH_KEY"
+          check_secret "DATABASE_URL" "$DATABASE_URL"
+          check_secret "SESSION_SECRET" "$SESSION_SECRET"
+          check_secret "MICROSOFT_CLIENT_ID" "$MICROSOFT_CLIENT_ID"
+          check_secret "MICROSOFT_CLIENT_SECRET" "$MICROSOFT_CLIENT_SECRET"
+          check_secret "MICROSOFT_TENANT_ID" "$MICROSOFT_TENANT_ID"
+          check_secret "FRONTEND_URL" "$FRONTEND_URL"
+          check_secret "GEMINI_API_KEY" "$GEMINI_API_KEY"
+
+          if [ ${#missing_secrets[@]} -ne 0 ]; then
+            echo "::warning::The following secrets are unset: ${missing_secrets[*]}"
+          else
+            echo "All core environment secrets for 'Zenatech' are present."
           fi
 
   docker-build:
@@ -82,7 +144,7 @@ jobs:
   migrate-db:
     name: Migrate & Verify Database
     environment: Zenatech
-    needs: docker-build
+    needs: [docker-build, check-environment]
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     env:
@@ -120,7 +182,7 @@ jobs:
                   return
 
               ssl_env = os.environ.get('DATABASE_SSL', 'require').lower()
-              ssl_mode = 'require' if ssl_env in ('true', 'require', '1') else (None if ssl_env in ('disable', 'false', '0', 'none') else ssl_env)
+              ssl_mode = 'require' if ssl_env in ('true', 'require', '1') else (None if ssl_env in ('disable', 'false', '0', 'none') else ssl_mode)
               try:
                   conn = await asyncio.wait_for(
                       asyncpg.connect(dsn=db_url, ssl=ssl_mode), timeout=8
@@ -144,42 +206,123 @@ jobs:
         run: |
           python -c "
           import asyncio, os
+          import asyncpg
           from dotenv import load_dotenv
           load_dotenv()
 
           async def run_bootstrap():
-              from postgresql_db.database import create_pool, close_pool, get_pool
-              from postgresql_db.cross_service_schema import ensure_cross_service_schema
-              from tools.approver_roles_router import ensure_approver_roles
+              db_url = os.environ.get('DATABASE_URL', '')
+              ssl_env = os.environ.get('DATABASE_SSL', 'require').lower()
+              ssl_mode = 'require' if ssl_env in ('true', 'require', '1') else (None if ssl_env in ('disable', 'false', '0', 'none') else ssl_env)
+              conn = await asyncpg.connect(dsn=db_url, ssl=ssl_mode)
               try:
-                  await create_pool()
-                  async with get_pool().acquire() as conn:
-                      await conn.execute('''
-                          CREATE TABLE IF NOT EXISTS ceo_events (
-                              id BIGSERIAL PRIMARY KEY,
-                              event_type VARCHAR(100) NOT NULL,
-                              source VARCHAR(100) NOT NULL,
-                              entity_id VARCHAR(100) NOT NULL,
-                              data JSONB DEFAULT '{}'::jsonb,
-                              created_at TIMESTAMPTZ DEFAULT NOW()
-                          );
-                          CREATE TABLE IF NOT EXISTS ceo_audit_logs (
-                              id BIGSERIAL PRIMARY KEY,
-                              action VARCHAR(100) NOT NULL,
-                              source_application VARCHAR(100) NOT NULL,
-                              target_application VARCHAR(100) NOT NULL,
-                              target_entity VARCHAR(100) NOT NULL,
-                              requested_by VARCHAR(255) NOT NULL,
-                              result VARCHAR(50) NOT NULL,
-                              details JSONB DEFAULT '{}'::jsonb,
-                              created_at TIMESTAMPTZ DEFAULT NOW()
-                          );
-                      ''')
-                  await ensure_approver_roles()
-                  await ensure_cross_service_schema()
+                  await conn.execute('''
+                      CREATE TABLE IF NOT EXISTS ceo_events (
+                          id BIGSERIAL PRIMARY KEY,
+                          event_type VARCHAR(100) NOT NULL,
+                          source VARCHAR(100) NOT NULL,
+                          entity_id VARCHAR(100) NOT NULL,
+                          data JSONB DEFAULT '{}'::jsonb,
+                          created_at TIMESTAMPTZ DEFAULT NOW()
+                      );
+                      CREATE TABLE IF NOT EXISTS ceo_audit_logs (
+                          id BIGSERIAL PRIMARY KEY,
+                          action VARCHAR(100) NOT NULL,
+                          source_application VARCHAR(100) NOT NULL,
+                          target_application VARCHAR(100) NOT NULL,
+                          target_entity VARCHAR(100) NOT NULL,
+                          requested_by VARCHAR(255) NOT NULL,
+                          result VARCHAR(50) NOT NULL,
+                          details JSONB DEFAULT '{}'::jsonb,
+                          created_at TIMESTAMPTZ DEFAULT NOW()
+                      );
+                      CREATE TABLE IF NOT EXISTS approver_role_assignments (
+                          id UUID PRIMARY KEY,
+                          user_id UUID NOT NULL,
+                          user_email VARCHAR(255) NOT NULL,
+                          user_name VARCHAR(255),
+                          role_type VARCHAR(50) NOT NULL,
+                          workflow_type VARCHAR(50) NOT NULL,
+                          assigned_by VARCHAR(255) NOT NULL,
+                          assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                          is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                          notes TEXT,
+                          CONSTRAINT uq_user_active_role UNIQUE (user_id, role_type)
+                      );
+                      CREATE TABLE IF NOT EXISTS service_commands (
+                          id BIGSERIAL PRIMARY KEY,
+                          command_id UUID UNIQUE NOT NULL,
+                          idempotency_key VARCHAR(255) UNIQUE,
+                          target_service VARCHAR(64) NOT NULL,
+                          resource_type VARCHAR(64) NOT NULL,
+                          resource_id VARCHAR(128) NOT NULL,
+                          command_type VARCHAR(64) NOT NULL,
+                          payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+                          expected_source_version INT,
+                          requested_by_user_id VARCHAR(128) NOT NULL,
+                          requested_by_display_name VARCHAR(255),
+                          status VARCHAR(32) NOT NULL DEFAULT 'QUEUED',
+                          failure_code VARCHAR(64),
+                          failure_message TEXT,
+                          retryable BOOLEAN DEFAULT FALSE,
+                          correlation_id VARCHAR(128),
+                          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                          dispatched_at TIMESTAMPTZ,
+                          processing_at TIMESTAMPTZ,
+                          completed_at TIMESTAMPTZ,
+                          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                      );
+                      CREATE TABLE IF NOT EXISTS service_outbox (
+                          id BIGSERIAL PRIMARY KEY,
+                          event_id UUID UNIQUE NOT NULL,
+                          command_id UUID,
+                          exchange_name VARCHAR(128) NOT NULL,
+                          routing_key VARCHAR(128) NOT NULL,
+                          payload JSONB NOT NULL,
+                          status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+                          retry_count INT NOT NULL DEFAULT 0,
+                          last_error TEXT,
+                          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                          published_at TIMESTAMPTZ
+                      );
+                      CREATE TABLE IF NOT EXISTS service_inbox (
+                          id BIGSERIAL PRIMARY KEY,
+                          message_id VARCHAR(128) UNIQUE NOT NULL,
+                          source_service VARCHAR(64) NOT NULL,
+                          message_type VARCHAR(64) NOT NULL,
+                          payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+                          processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                      );
+                      CREATE TABLE IF NOT EXISTS ceo_service_projections (
+                          id BIGSERIAL PRIMARY KEY,
+                          service_name VARCHAR(64) NOT NULL,
+                          resource_type VARCHAR(64) NOT NULL,
+                          resource_id VARCHAR(128) NOT NULL,
+                          version INT NOT NULL DEFAULT 1,
+                          data JSONB NOT NULL DEFAULT '{}'::jsonb,
+                          source_status VARCHAR(64),
+                          last_synchronized_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                          is_stale BOOLEAN NOT NULL DEFAULT FALSE,
+                          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                          CONSTRAINT uq_service_projections UNIQUE (service_name, resource_type, resource_id)
+                      );
+                      CREATE TABLE IF NOT EXISTS workflow_assignments (
+                          id BIGSERIAL PRIMARY KEY,
+                          workflow_id UUID UNIQUE NOT NULL,
+                          workflow_type VARCHAR(64) NOT NULL,
+                          assigned_approver_id UUID NOT NULL,
+                          status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+                          title VARCHAR(255) NOT NULL,
+                          description TEXT,
+                          payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+                          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                      );
+                  ''')
                   print('[OK] Schema verification and bootstrap succeeded.')
               finally:
-                  await close_pool()
+                  await conn.close()
 
           asyncio.run(run_bootstrap())
           "
@@ -211,7 +354,7 @@ jobs:
   deploy-ec2:
     name: Deploy to EC2
     environment: Zenatech
-    needs: migrate-db
+    needs: [docker-build, check-environment, migrate-db]
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     env:
@@ -247,6 +390,8 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DATABASE_SSL: ${{ secrets.DATABASE_SSL || 'require' }}
           ADMIN_DATABASE_URL: ${{ secrets.ADMIN_DATABASE_URL || secrets.ADMIN_PORTAL_DATABASE }}
+          DB_MIN_CONNECTIONS: ${{ secrets.DB_MIN_CONNECTIONS || '2' }}
+          DB_MAX_CONNECTIONS: ${{ secrets.DB_MAX_CONNECTIONS || '20' }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_ACCOUNT_REVIEW_MODELS: ${{ secrets.GEMINI_ACCOUNT_REVIEW_MODELS }}
           GEMINI_AVAILABLE_MODELS: ${{ secrets.GEMINI_AVAILABLE_MODELS }}
@@ -294,10 +439,10 @@ jobs:
 
           ssh -o StrictHostKeyChecking=no -i ec2-key.pem "$EC2_USER@$EC2_HOST" "
             if [ ! -d ~/internal_portal_ceo_dashboard_backend/.git ]; then
-              git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git ~/internal_portal_ceo_dashboard_backend
+              git clone https://x-access-token:${{ secrets.GITHUB_TOKEN || secrets.PAT_TOKEN || github.token }}@github.com/${{ github.repository }}.git ~/internal_portal_ceo_dashboard_backend
             else
               cd ~/internal_portal_ceo_dashboard_backend && \
-              git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git && \
+              git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN || secrets.PAT_TOKEN || github.token }}@github.com/${{ github.repository }}.git && \
               git fetch origin main && \
               git reset --hard origin/main
             fi
@@ -316,15 +461,23 @@ jobs:
             if [ -n "$ADMIN_DATABASE_URL" ]; then
               printf 'ADMIN_DATABASE_URL=%s\n' "$ADMIN_DATABASE_URL"
             fi
+            printf 'DB_MIN_CONNECTIONS=%s\n' "$DB_MIN_CONNECTIONS"
+            printf 'DB_MAX_CONNECTIONS=%s\n' "$DB_MAX_CONNECTIONS"
             printf 'GEMINI_API_KEY=%s\n' "$GEMINI_API_KEY"
             if [ -n "$GEMINI_ACCOUNT_REVIEW_MODELS" ]; then
               printf 'GEMINI_ACCOUNT_REVIEW_MODELS=%s\n' "$GEMINI_ACCOUNT_REVIEW_MODELS"
+            else
+              echo "GEMINI_ACCOUNT_REVIEW_MODELS=Gemini 2.5 Flash,Gemini 3.5 Flash,Gemini 2.5 Flash Lite,Gemini 3.1 Flash Lite,Deep Research Pro Preview,Gemini 2 Flash,Gemini 2 Flash Lite,Computer Use Preview,Nano Banana (Gemini 2.5 Flash Preview Image),Gemini 2.5 Flash TTS,Gemini 2.5 Pro,Gemini 2.5 Pro TTS,Gemini 3 Flash,Nano Banana Pro (Gemini 3 Pro Image),Gemini 3.1 Pro,Nano Banana 2 (Gemini 3.1 Flash Image),Nano Banana 2 Lite (Gemini 3.1 Flash Lite Image),Gemini 3.1 Flash TTS,Gemini Embedding 1,Gemini Embedding 2,Gemini Omni Flash,Gemini Robotics ER 1.5 Preview,Gemini Robotics ER 1.6 Preview,Gemma 4 26B,Gemma 4 31B,Imagen 4 Fast Generate,Imagen 4 Generate,Imagen 4 Ultra Generate,Lyria 3 Clip,Lyria 3 Pro,Veo 3 Fast Generate,Veo 3 Generate,Veo 3 Lite Generate,Gemini 2.5 Flash Native Audio Dialog,Gemini 3 Flash Live,Gemini 3.5 Live Translate"
             fi
             if [ -n "$GEMINI_AVAILABLE_MODELS" ]; then
               printf 'GEMINI_AVAILABLE_MODELS=%s\n' "$GEMINI_AVAILABLE_MODELS"
+            else
+              echo "GEMINI_AVAILABLE_MODELS=Gemini 2.5 Flash,Gemini 3.5 Flash,Gemini 2.5 Flash Lite,Gemini 3.1 Flash Lite,Antigravity,Deep Research Pro Preview,Gemini 2 Flash,Gemini 2 Flash Lite,Computer Use Preview,Nano Banana (Gemini 2.5 Flash Preview Image),Gemini 2.5 Flash TTS,Gemini 2.5 Pro,Gemini 2.5 Pro TTS,Gemini 3 Flash,Nano Banana Pro (Gemini 3 Pro Image),Gemini 3.1 Pro,Nano Banana 2 (Gemini 3.1 Flash Image),Nano Banana 2 Lite (Gemini 3.1 Flash Lite Image),Gemini 3.1 Flash TTS,Gemini Embedding 1,Gemini Embedding 2,Gemini Omni Flash,Gemini Robotics ER 1.5 Preview,Gemini Robotics ER 1.6 Preview,Gemma 4 26B,Gemma 4 31B,Imagen 4 Fast Generate,Imagen 4 Generate,Imagen 4 Ultra Generate,Lyria 3 Clip,Lyria 3 Pro,Veo 3 Fast Generate,Veo 3 Generate,Veo 3 Lite Generate,Gemini 2.5 Flash Native Audio Dialog,Gemini 3 Flash Live,Gemini 3.5 Live Translate"
             fi
             if [ -n "$GEMINI_AVAILABLE_TOOL_QUOTA_MODELS" ]; then
               printf 'GEMINI_AVAILABLE_TOOL_QUOTA_MODELS=%s\n' "$GEMINI_AVAILABLE_TOOL_QUOTA_MODELS"
+            else
+              echo "GEMINI_AVAILABLE_TOOL_QUOTA_MODELS=Deep Research Pro Preview,Gemini 2 Flash,Computer Use Preview,Gemini 2.5 Flash,Gemini 2.5 Flash Lite,Gemini 2.5 Pro,Gemini 3 Flash,Gemini 3.1 Pro,Gemini 3.1 Flash Lite,Gemini 3.1 Flash TTS,Gemini 3.5 Flash,Gemini Robotics ER 1.6 Preview,Gemini 2,Gemini 2.5,Gemini 3,Default"
             fi
             printf 'SESSION_SECRET=%s\n' "$SESSION_SECRET"
             printf 'JWT_SECRET=%s\n' "$JWT_SECRET"
