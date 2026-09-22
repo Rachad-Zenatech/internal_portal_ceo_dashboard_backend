@@ -30,11 +30,6 @@ services:
       - path: .env
         required: false
 
-    environment:
-      - APP_ENV=production
-      - PORT=8000
-      - MCP_PORT=7001
-
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
