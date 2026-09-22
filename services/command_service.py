@@ -286,8 +286,7 @@ class CommandService:
             "resource_id": str(resource_id),
             "command_type": cmd_type,
             "status": "QUEUED",
-            "message": f"Action queued for {svc_display}. The service will process it asynchronously.",
-            "message": "Saved and will sync to the server once it is back online.",
+            "message": f"Action queued for {svc_display}. Saved and will sync to the server once it is back online.",
         }
 
     async def get_command_status(self, command_id: str) -> Optional[Dict[str, Any]]:

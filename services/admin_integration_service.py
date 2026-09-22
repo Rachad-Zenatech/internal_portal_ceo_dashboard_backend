@@ -3,7 +3,7 @@ import time
 import json
 import asyncio
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from uuid import UUID
 import datetime
 import secrets
@@ -11,6 +11,7 @@ import jwt
 import httpx
 
 from postgresql_db.database import get_conn
+from services.logging_service import create_background_task
 from services.integration_resilience import (
     admin_circuit_breaker,
     ma_circuit_breaker,
@@ -35,19 +36,93 @@ JWT_ISSUER = "zenatech-internal-portal"
 _service_token_cache: Dict[str, Tuple[str, float]] = {}
 
 
+_admin_user_id_cache: Dict[str, Tuple[str, float]] = {}
+
+
+async def _resolve_admin_user_id(user_id: Optional[UUID] = None) -> str:
+    now_ts = time.time()
+    cache_key = str(user_id) if user_id else "__default__"
+    cached = _admin_user_id_cache.get(cache_key)
+    if cached and cached[1] > now_ts:
+        return cached[0]
+
+    email: Optional[str] = None
+    if user_id:
+        try:
+            from postgresql_db.database import get_pool
+            ceo_pool = get_pool()
+            async with ceo_pool.acquire() as conn:
+                row = await conn.fetchrow("SELECT email FROM users WHERE id = $1", user_id)
+                if row and row.get("email"):
+                    email = str(row["email"]).lower().strip()
+        except Exception as exc:
+            logger.debug(f"Could not fetch email for user {user_id} from CEO DB: {exc}")
+
+    # 1. Try querying Admin DB via admin pool (matching by user email)
+    try:
+        from postgresql_db.database import get_admin_pool
+        admin_pool = get_admin_pool()
+        if admin_pool:
+            async with admin_pool.acquire() as conn:
+                if email:
+                    admin_row = await conn.fetchrow(
+                        "SELECT id FROM users WHERE LOWER(TRIM(email)) = $1 AND is_active = true AND deleted_at IS NULL",
+                        email,
+                    )
+                    if admin_row and admin_row.get("id"):
+                        resolved = str(admin_row["id"])
+                        _admin_user_id_cache[cache_key] = (resolved, now_ts + 300)
+                        return resolved
+
+                # If no specific user or email match, pick the primary active super admin in Admin DB
+                admin_row = await conn.fetchrow(
+                    "SELECT id FROM users WHERE is_super_admin = true AND is_active = true AND deleted_at IS NULL ORDER BY created_at ASC LIMIT 1"
+                )
+                if admin_row and admin_row.get("id"):
+                    resolved = str(admin_row["id"])
+                    _admin_user_id_cache[cache_key] = (resolved, now_ts + 300)
+                    return resolved
+    except Exception as exc:
+        logger.debug(f"Admin DB pool lookup during user resolution: {exc}")
+
+    # 2. Check environment variable
+    env_admin_id = os.getenv("DEFAULT_ADMIN_USER_ID", "").strip()
+    if env_admin_id:
+        return env_admin_id
+
+    # 3. If user_id is provided, try user_id directly
+    if user_id:
+        return str(user_id)
+
+    # 4. Fallback to CEO DB super admin if admin DB is not reachable
+    try:
+        from postgresql_db.database import get_pool
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT id FROM users WHERE is_active = TRUE AND is_super_admin = TRUE ORDER BY created_at ASC LIMIT 1"
+            )
+            if row and row.get("id"):
+                return str(row["id"])
+    except Exception:
+        pass
+
+    return "00000000-0000-0000-0000-000000000000"
+
+
 async def _generate_service_token(user_id: Optional[UUID] = None) -> str:
-    uid_str = str(user_id or "998285f2-cff3-46dd-887b-0bf17b255d5f")
+    admin_uid = await _resolve_admin_user_id(user_id)
     now_ts = time.time()
 
     # Return cached token if valid for at least 5 more minutes
-    cached = _service_token_cache.get(uid_str)
+    cached = _service_token_cache.get(admin_uid)
     if cached and cached[1] > now_ts + 300:
         return cached[0]
 
     now = datetime.datetime.now(datetime.timezone.utc)
     exp_dt = now + datetime.timedelta(hours=2)
     payload = {
-        "sub": uid_str,
+        "sub": admin_uid,
         "is_super_admin": True,
         "is_service_token": True,
         "iss": JWT_ISSUER,
@@ -56,7 +131,7 @@ async def _generate_service_token(user_id: Optional[UUID] = None) -> str:
         "exp": int(exp_dt.timestamp()),
     }
     token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
-    _service_token_cache[uid_str] = (token, exp_dt.timestamp())
+    _service_token_cache[admin_uid] = (token, exp_dt.timestamp())
     return token
 
 
@@ -73,13 +148,19 @@ def _extract_port(url_str: str) -> int:
 
 def _map_to_ceo_approval_status(raw_status: str) -> str:
     st = str(raw_status or "").strip().upper().replace(" ", "_")
-    if st in ["WAITING_APPROVAL", "PENDING_APPROVAL", "PENDING", "UNDER_REVIEW", "NEW", "SUBMITTED"]:
+    if st in ["WAITING_APPROVAL", "PENDING_APPROVAL", "PENDING"]:
         return "WAITING_APPROVAL"
+    if st in ["UNDER_REVIEW"]:
+        return "UNDER_REVIEW"
+    if st in ["NEW", "INITIAL", "DRAFT", "SUBMITTED"]:
+        return "NEW"
     if st in ["REJECTED", "CANCELLED", "DECLINED"]:
         return "REJECTED"
-    if st in ["COMPLETED", "CLOSED", "DELIVERED", "FULFILLED"]:
+    if st in ["COMPLETED", "CLOSED", "DELIVERED", "FULFILLED", "PAID"]:
         return "COMPLETED"
-    return "APPROVED"
+    if st in ["APPROVED", "PURCHASED", "ORDERED", "SHIPPED", "GOODS_RECEIVED", "INVOICE_RECEIVED", "SENT_TO_AP", "WAITING_PAYMENT"]:
+        return "APPROVED"
+    return st or "NEW"
 
 
 def _enrich_purchase_request_multi_currency(req_obj: Dict[str, Any]) -> None:
@@ -352,23 +433,29 @@ async def get_portal_health(force: bool = False) -> List[Dict[str, Any]]:
     return await check_portals_health()
 
 
-async def _fetch_admin_raw_requests(user_id: Optional[UUID] = None) -> List[Dict[str, Any]]:
+async def _fetch_admin_raw_requests(user_id: Optional[UUID] = None, status: Optional[str] = None) -> List[Dict[str, Any]]:
     token = await _generate_service_token(user_id)
     headers = {"Authorization": f"Bearer {token}"}
     url = f"{ADMIN_API_BASE}/api/purchasing/requests"
+    params = {}
+    if status:
+        params["status"] = status
     client_timeout = httpx.Timeout(TIMEOUT_SECONDS, connect=CONNECT_TIMEOUT)
     async with httpx.AsyncClient(timeout=client_timeout) as client:
-        resp = await client.get(url, headers=headers)
+        resp = await client.get(url, headers=headers, params=params)
         if resp.status_code == 200:
             data = resp.json()
             if isinstance(data, list):
                 return data
+        else:
+            logger.warning(f"Admin portal GET requests returned HTTP {resp.status_code}: {resp.text[:200]}")
+            resp.raise_for_status()
     return []
 
 
-async def _persist_purchase_requests_to_projection(raw_list: List[Dict[str, Any]]) -> None:
+async def _persist_purchase_requests_to_projection(raw_list: List[Dict[str, Any]], status_scope: Optional[str] = None) -> None:
     """Upserts all requests into PostgreSQL ceo_service_projections for durable offline availability."""
-    if not raw_list:
+    if raw_list is None:
         return
     try:
         from postgresql_db.database import get_pool
@@ -383,30 +470,54 @@ async def _persist_purchase_requests_to_projection(raw_list: List[Dict[str, Any]
                 "data": json.dumps(parsed),
                 "status": raw_status,
             })
-        if not batch_payload:
-            return
 
-        batch_json = json.dumps(batch_payload)
         async with pool.acquire(timeout=10.0) as conn:
-            await conn.execute(
-                """
-                INSERT INTO ceo_service_projections (
-                    service_name, resource_type, resource_id, version, data,
-                    source_status, last_synchronized_at, is_stale, updated_at
+            if batch_payload:
+                batch_json = json.dumps(batch_payload)
+                await conn.execute(
+                    """
+                    INSERT INTO ceo_service_projections (
+                        service_name, resource_type, resource_id, version, data,
+                        source_status, last_synchronized_at, is_stale, updated_at
+                    )
+                    SELECT
+                        'administration', 'purchase_request', x.id, 1, x.data::jsonb, x.status, NOW(), false, NOW()
+                    FROM json_to_recordset($1::json) AS x(id text, data text, status text)
+                    ON CONFLICT (service_name, resource_type, resource_id)
+                    DO UPDATE SET
+                        data = EXCLUDED.data,
+                        source_status = EXCLUDED.source_status,
+                        last_synchronized_at = NOW(),
+                        is_stale = false,
+                        updated_at = NOW()
+                    """,
+                    batch_json,
                 )
-                SELECT
-                    'administration', 'purchase_request', x.id, 1, x.data::jsonb, x.status, NOW(), false, NOW()
-                FROM json_to_recordset($1::json) AS x(id text, data text, status text)
-                ON CONFLICT (service_name, resource_type, resource_id)
-                DO UPDATE SET
-                    data = EXCLUDED.data,
-                    source_status = EXCLUDED.source_status,
-                    last_synchronized_at = NOW(),
-                    is_stale = false,
-                    updated_at = NOW()
-                """,
-                batch_json,
-            )
+
+            if status_scope:
+                live_ids = [str(item["id"]) for item in batch_payload]
+                if live_ids:
+                    await conn.execute(
+                        """
+                        DELETE FROM ceo_service_projections
+                        WHERE service_name = 'administration'
+                          AND resource_type = 'purchase_request'
+                          AND source_status = $1
+                          AND resource_id != ALL($2::text[])
+                        """,
+                        status_scope,
+                        live_ids,
+                    )
+                else:
+                    await conn.execute(
+                        """
+                        DELETE FROM ceo_service_projections
+                        WHERE service_name = 'administration'
+                          AND resource_type = 'purchase_request'
+                          AND source_status = $1
+                        """,
+                        status_scope,
+                    )
     except Exception as exc:
         logger.warning(f"Failed to persist purchase requests to PostgreSQL projection cache: {exc}")
 
@@ -495,17 +606,21 @@ async def sync_admin_records_from_source(user_id: Optional[UUID] = None) -> List
 async def get_pending_purchase_requests(user_id: Optional[UUID] = None) -> List[Dict[str, Any]]:
     """
     Fetches pending purchasing requests.
-    - When Admin Portal is online, pulls live records, updates the PostgreSQL local copy, and returns.
+    - When Admin Portal is online or reachable, pulls live records, updates the PostgreSQL local copy, and returns.
+    - STRICTLY returns only requests in WAITING_APPROVAL status (excluding UNDER_REVIEW, NEW, DRAFT, SUBMITTED).
     - When Admin Portal is offline, returns the local persistent copy from PostgreSQL projections.
     """
     from services.service_status_registry import service_status_registry
     is_online = service_status_registry.is_service_online("admin")
 
-    if is_online:
+    if is_online or admin_circuit_breaker.allow_request():
         try:
-            raw_list = await _fetch_admin_raw_requests(user_id)
-            if raw_list:
-                await _persist_purchase_requests_to_projection(raw_list)
+            raw_list = await _fetch_admin_raw_requests(user_id, status="WAITING_APPROVAL")
+            if raw_list is not None:
+                admin_circuit_breaker.record_success()
+                if not is_online:
+                    service_status_registry.update_instance_status("admin", "admin-01", "online")
+                await _persist_purchase_requests_to_projection(raw_list, status_scope="WAITING_APPROVAL")
                 pending = []
                 for r in raw_list:
                     parsed = _parse_purchase_request_item(r)
@@ -513,6 +628,7 @@ async def get_pending_purchase_requests(user_id: Optional[UUID] = None) -> List[
                         pending.append(parsed)
                 return pending
         except Exception as exc:
+            admin_circuit_breaker.record_failure(exc)
             logger.warning(f"Error fetching live pending requests from Admin Portal: {exc}. Reading local projection.")
 
     # Offline or connection fallback: read from local PostgreSQL projection store
@@ -522,16 +638,19 @@ async def get_pending_purchase_requests(user_id: Optional[UUID] = None) -> List[
 async def get_completed_purchase_requests(user_id: Optional[UUID] = None) -> List[Dict[str, Any]]:
     """
     Fetches completed / approved purchasing requests.
-    - When Admin Portal is online, pulls live records, updates PostgreSQL local copy, and returns.
+    - When Admin Portal is online or reachable, pulls live records, updates PostgreSQL local copy, and returns.
     - When Admin Portal is offline, returns the local persistent copy from PostgreSQL projections.
     """
     from services.service_status_registry import service_status_registry
     is_online = service_status_registry.is_service_online("admin")
 
-    if is_online:
+    if is_online or admin_circuit_breaker.allow_request():
         try:
             raw_list = await _fetch_admin_raw_requests(user_id)
-            if raw_list:
+            if raw_list is not None:
+                admin_circuit_breaker.record_success()
+                if not is_online:
+                    service_status_registry.update_instance_status("admin", "admin-01", "online")
                 await _persist_purchase_requests_to_projection(raw_list)
                 completed = []
                 for r in raw_list:
@@ -540,29 +659,33 @@ async def get_completed_purchase_requests(user_id: Optional[UUID] = None) -> Lis
                         completed.append(parsed)
                 return completed
         except Exception as exc:
+            admin_circuit_breaker.record_failure(exc)
             logger.warning(f"Error fetching live completed requests from Admin Portal: {exc}. Reading local projection.")
 
     # Offline or connection fallback: read from local PostgreSQL projection store
     return await _get_projected_purchase_requests(status_filter="completed")
 
 
-async def get_purchase_request_detail(request_id: str) -> Optional[Dict[str, Any]]:
+async def get_purchase_request_detail(request_id: str, user_id: Optional[UUID] = None) -> Optional[Dict[str, Any]]:
     """
     Fetches full request details.
-    - If Admin Portal is online, fetches from remote and caches locally.
+    - If Admin Portal is online or reachable, fetches from remote and caches locally.
     - If offline, returns detail from PostgreSQL projection store.
     """
     from services.service_status_registry import service_status_registry
     is_online = service_status_registry.is_service_online("admin")
 
-    if is_online:
+    if is_online or admin_circuit_breaker.allow_request():
         try:
-            token = await _generate_service_token()
+            token = await _generate_service_token(user_id)
             headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
             url = f"{ADMIN_API_BASE}/api/purchasing/requests/{request_id}"
             async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
                 resp = await client.get(url, headers=headers)
                 if resp.status_code == 200:
+                    admin_circuit_breaker.record_success()
+                    if not is_online:
+                        service_status_registry.update_instance_status("admin", "admin-01", "online")
                     data = resp.json()
                     req_obj = data.get("request") if isinstance(data, dict) and "request" in data else data
                     if isinstance(req_obj, dict):
@@ -579,6 +702,7 @@ async def get_purchase_request_detail(request_id: str) -> Optional[Dict[str, Any
                         _enrich_purchase_request_multi_currency(req_obj)
                     return data
         except Exception as exc:
+            admin_circuit_breaker.record_failure(exc)
             logger.warning(f"Error fetching request detail from Admin Portal: {exc}. Falling back to local copy.")
 
     # Offline fallback: read from PostgreSQL ceo_service_projections
@@ -610,7 +734,9 @@ async def execute_purchase_transition(request_id: str, action: str, note: Option
     Executes approval or rejection of a purchase request via Administration Portal.
     """
     from services.service_status_registry import service_status_registry
-    if not service_status_registry.is_service_online("admin") or not admin_circuit_breaker.allow_request():
+    is_online = service_status_registry.is_service_online("admin")
+
+    if not is_online and not admin_circuit_breaker.allow_request():
         return {
             "success": False,
             "code": "SERVICE_UNAVAILABLE",
@@ -620,28 +746,30 @@ async def execute_purchase_transition(request_id: str, action: str, note: Option
 
     action_clean = action.upper().strip()
     url = f"{ADMIN_API_BASE}/api/purchasing/requests/{request_id}/transition"
+    admin_uid = await _resolve_admin_user_id(user_id)
     token = await _generate_service_token(user_id)
     headers = {
         "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "X-User-Id": admin_uid,
     }
-    if user_id:
-        headers["X-User-Id"] = str(user_id)
 
     payload: Dict[str, Any] = {
         "action": action_clean,
+        "comment": note or f"Executive {action_clean} from CEO Dashboard",
         "approval": {
             "approver": "CEO Executive",
             "comment": note or f"Executive {action_clean} from CEO Dashboard"
         }
     }
 
-
     try:
         async with httpx.AsyncClient(timeout=min(15.0, HARD_TIMEOUT_SECONDS)) as client:
             resp = await client.post(url, json=payload, headers=headers)
             if resp.status_code in [200, 201]:
                 admin_circuit_breaker.record_success()
+                if not is_online:
+                    service_status_registry.update_instance_status("admin", "admin-01", "online")
                 return {"success": True, "data": resp.json()}
             else:
                 try:
@@ -650,10 +778,101 @@ async def execute_purchase_transition(request_id: str, action: str, note: Option
                 except Exception:
                     detail = resp.text
                 return {"success": False, "error": detail or f"Administration API returned HTTP {resp.status_code}"}
+                return {
+                    "success": False,
+                    "code": f"HTTP_{resp.status_code}",
+                    "error": detail or f"Administration API returned HTTP {resp.status_code}",
+                }
     except Exception as exc:
         admin_circuit_breaker.record_failure(exc)
         logger.warning(f"Admin API transition forwarding note: {exc}")
         return {"success": False, "error": f"Administration Portal is currently unavailable: {exc}"}
+
+
+async def execute_batch_purchase_transition(
+    request_ids: List[str],
+    action: str,
+    note: Optional[str] = None,
+    user_id: Optional[UUID] = None,
+) -> Dict[str, Any]:
+    """
+    Executes batch approval or rejection of purchase requests via Administration Portal.
+    First attempts using Admin Portal's /api/purchasing/batch-approve or /api/purchasing/batch-reject.
+    Falls back to individual resilient transitions if the batch endpoint is unreachable.
+    """
+    from services.service_status_registry import service_status_registry
+    is_online = service_status_registry.is_service_online("admin")
+
+    if not is_online and not admin_circuit_breaker.allow_request():
+        return {
+            "success": False,
+            "code": "SERVICE_UNAVAILABLE",
+            "service": "admin",
+            "error": "Administration Portal is currently offline.",
+        }
+
+    action_clean = action.upper().strip()
+    admin_uid = await _resolve_admin_user_id(user_id)
+    token = await _generate_service_token(user_id)
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "X-User-Id": admin_uid,
+    }
+
+    # Convert request IDs to integer where numeric
+    parsed_ids = []
+    for rid in request_ids:
+        try:
+            parsed_ids.append(int(rid))
+        except (ValueError, TypeError):
+            parsed_ids.append(rid)
+
+    endpoint = "batch-approve" if action_clean == "APPROVE" else "batch-reject"
+    url = f"{ADMIN_API_BASE}/api/purchasing/{endpoint}"
+    comment = note or f"Executive bulk {action_clean.lower()} from CEO Dashboard"
+
+    try:
+        async with httpx.AsyncClient(timeout=min(25.0, HARD_TIMEOUT_SECONDS)) as client:
+            resp = await client.post(
+                url,
+                json={"request_ids": parsed_ids, "comment": comment},
+                headers=headers,
+            )
+            if resp.status_code in [200, 201]:
+                admin_circuit_breaker.record_success()
+                if not is_online:
+                    service_status_registry.update_instance_status("admin", "admin-01", "online")
+                return {"success": True, "data": resp.json()}
+            else:
+                logger.info(f"Batch endpoint returned HTTP {resp.status_code}, attempting individual transitions fallback")
+    except Exception as exc:
+        logger.warning(f"Batch transition direct call error: {exc}. Trying resilient individual transitions.")
+
+    # Resilient fallback: execute individually
+    results = []
+    successes = []
+    failures = []
+    for rid in request_ids:
+        res = await execute_purchase_transition(request_id=str(rid), action=action_clean, note=note, user_id=user_id)
+        if res.get("success"):
+            successes.append(str(rid))
+        else:
+            failures.append({"request_id": str(rid), "error": res.get("error")})
+        results.append(res)
+
+    if successes:
+        return {
+            "success": True,
+            "data": results,
+            "succeeded_ids": successes,
+            "failed_ids": failures,
+        }
+    return {
+        "success": False,
+        "error": f"Batch {action_clean.lower()} failed for all items",
+        "failed_ids": failures,
+    }
 
 
 async def _persist_admin_tasks_to_projection(raw_list: List[Dict[str, Any]]) -> None:
@@ -742,6 +961,7 @@ async def get_admin_tasks(user_id: Optional[UUID] = None) -> List[Dict[str, Any]
                     data = resp.json()
                     if isinstance(data, list):
                         asyncio.create_task(_persist_admin_tasks_to_projection(data))
+                        create_background_task(_persist_admin_tasks_to_projection(data), name="persist-admin-tasks-projection")
                         return data
         except Exception as exc:
             logger.warning(f"Error fetching live admin tasks: {exc}. Reading local projection.")
@@ -868,6 +1088,7 @@ async def get_ma_pipeline_tasks(limit: int = 50, skip: int = 0, loi_accepted_onl
                         if not is_online:
                             service_status_registry.update_instance_status("ma", "ma-01", "online")
                         asyncio.create_task(_persist_ma_deals_to_projection(data))
+                        create_background_task(_persist_ma_deals_to_projection(data), name="persist-ma-deals-projection")
         except Exception as exc:
             ma_circuit_breaker.record_failure(exc)
             logger.warning(f"Error fetching live M&A tasks: {exc}. Reading local projection.")
@@ -917,6 +1138,7 @@ async def get_ma_pipeline_summary() -> Dict[str, Any]:
                         service_status_registry.update_instance_status("ma", "ma-01", "online")
                         is_online = True
                     asyncio.create_task(_persist_ma_deals_to_projection(tasks))
+                    create_background_task(_persist_ma_deals_to_projection(tasks), name="persist-ma-deals-summary-projection")
 
             if not isinstance(r_calls, Exception) and r_calls.status_code == 200:
                 c_data = r_calls.json()

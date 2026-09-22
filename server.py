@@ -368,7 +368,6 @@ async def request_observability(request: Request, call_next):
 # Broad CORS for multi-app integration on local development and production
 _cors_env = os.getenv("CORS_ORIGINS", "") or os.getenv("CORS_ALLOWED_ORIGINS", "")
 cors_origins = [orig.strip() for orig in _cors_env.split(",") if orig.strip()]
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,

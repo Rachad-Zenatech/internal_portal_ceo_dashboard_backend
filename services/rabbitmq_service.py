@@ -8,15 +8,26 @@ import os
 import json
 import asyncio
 import logging
-from typing import Any, Callable, Dict, List, Optional
-import aio_pika
-from aio_pika.abc import (
-    AbstractRobustConnection,
-    AbstractRobustChannel,
-    AbstractExchange,
-    AbstractQueue,
-    AbstractIncomingMessage,
-)
+from typing import Any, Callable, Dict, List, Optional, Set
+
+try:
+    import aio_pika
+    from aio_pika.abc import (
+        AbstractRobustConnection,
+        AbstractRobustChannel,
+        AbstractExchange,
+        AbstractQueue,
+        AbstractIncomingMessage,
+    )
+    AIO_PIKA_AVAILABLE = True
+except ImportError:
+    aio_pika = None
+    AbstractRobustConnection = Any  # type: ignore[misc,assignment]
+    AbstractRobustChannel = Any  # type: ignore[misc,assignment]
+    AbstractExchange = Any  # type: ignore[misc,assignment]
+    AbstractQueue = Any  # type: ignore[misc,assignment]
+    AbstractIncomingMessage = Any  # type: ignore[misc,assignment]
+    AIO_PIKA_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +93,7 @@ class RabbitMQManager:
         self._is_connected: bool = False
         self._use_fallback: bool = False
         self._lock = asyncio.Lock()
+        self._in_memory_tasks: Set[asyncio.Task] = set()
 
     @property
     def is_connected(self) -> bool:
@@ -95,6 +107,12 @@ class RabbitMQManager:
         async with self._lock:
             if self.is_connected:
                 return True
+
+            if not AIO_PIKA_AVAILABLE:
+                logger.info("aio_pika library is not installed; operating in in-memory fallback messaging mode.")
+                self._use_fallback = True
+                self._is_connected = False
+                return False
 
             for attempt in range(1, max_retries + 1):
                 try:
@@ -245,6 +263,12 @@ class RabbitMQManager:
 
         # Fallback consumption from in-memory queue
         asyncio.create_task(self._consume_in_memory(queue_name, message_handler))
+        task = asyncio.create_task(
+            self._consume_in_memory(queue_name, message_handler),
+            name=f"in-memory-consumer-{queue_name}",
+        )
+        self._in_memory_tasks.add(task)
+        task.add_done_callback(self._in_memory_tasks.discard)
 
     async def _consume_in_memory(self, queue_name: str, message_handler: Callable[[Dict[str, Any]], Any]):
         q = in_memory_broker.get_queue(queue_name)
@@ -262,6 +286,12 @@ class RabbitMQManager:
 
     async def close(self):
         async with self._lock:
+            for task in list(self._in_memory_tasks):
+                task.cancel()
+            if self._in_memory_tasks:
+                await asyncio.gather(*self._in_memory_tasks, return_exceptions=True)
+            self._in_memory_tasks.clear()
+
             if self._channel and not self._channel.is_closed:
                 await self._channel.close()
             if self._connection and not self._connection.is_closed:

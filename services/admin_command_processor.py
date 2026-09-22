@@ -15,6 +15,7 @@ from services.connectors.base_connector import (
     CommandResultEnvelope,
     FailureInfo,
 )
+from services.logging_service import create_background_task
 from services.rabbitmq_service import rabbitmq_manager, EVENTS_EXCHANGE_NAME
 from services.admin_integration_service import (
     execute_purchase_transition,
@@ -43,6 +44,7 @@ class AdminCommandProcessor:
 
         # 1. Recover any uncompleted/queued commands on startup
         asyncio.create_task(self.recover_unprocessed_commands())
+        create_background_task(self.recover_unprocessed_commands(), name="admin-recover-unprocessed-commands")
 
         # 2. Listen for service online transitions to auto-flush queued commands
         from services.service_status_registry import service_status_registry
@@ -51,6 +53,7 @@ class AdminCommandProcessor:
             if svc.lower() == "admin" and status == "online":
                 logger.info("[AdminCommandProcessor] Admin service came ONLINE; triggering queued commands recovery & sync...")
                 asyncio.create_task(self.recover_unprocessed_commands())
+                create_background_task(self.recover_unprocessed_commands(), name="admin-online-recovery")
 
         service_status_registry.add_status_listener(_on_admin_status)
 
@@ -95,6 +98,7 @@ class AdminCommandProcessor:
                         "payload": payload_obj,
                     }
                     asyncio.create_task(self.process_command(envelope))
+                    create_background_task(self.process_command(envelope), name=f"admin-process-command-{cid}")
         except Exception as exc:
             logger.warning(f"Error during recover_unprocessed_commands: {exc}")
 

@@ -33,8 +33,8 @@ services:
 
     environment:
       - APP_ENV=production
-      - MCP_PORT=${MCP_PORT:-7001}
       - PORT=8000
+      - MCP_PORT=${MCP_PORT:-7001}
       - ADMIN_PORTAL_API_URL=${ADMIN_PORTAL_API_URL:-http://host.docker.internal:8002}
       - FINANCE_PORTAL_API_URL=${FINANCE_PORTAL_API_URL:-http://host.docker.internal:8001}
       - MA_PORTAL_API_URL=${MA_PORTAL_API_URL:-http://host.docker.internal:8000}

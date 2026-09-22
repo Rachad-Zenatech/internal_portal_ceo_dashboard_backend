@@ -95,13 +95,38 @@ class ServiceStatusRegistry:
     def get_service_status(self, service_name: str) -> str:
         """Returns 'online', 'offline', or 'unknown'."""
         normalized = normalize_service_name(service_name)
-        if normalized == "ceo" or normalized == "finance":
+        if normalized in ("ceo", "finance"):
             return "online"
-        return self._effective_status.get(normalized, "unknown")
+        st = self._effective_status.get(normalized)
+        if st is not None:
+            return st
+        try:
+            from services.integration_resilience import admin_circuit_breaker, ma_circuit_breaker
+            if normalized == "admin" and admin_circuit_breaker.state == "CLOSED":
+                return "online"
+            if normalized == "ma" and ma_circuit_breaker.state == "CLOSED":
+                return "online"
+        except Exception:
+            pass
+        return "unknown"
 
 
     def is_service_online(self, service_name: str) -> bool:
-        return self.get_service_status(service_name) == "online"
+        normalized = normalize_service_name(service_name)
+        if normalized in ("ceo", "finance"):
+            return True
+        st = self.get_service_status(service_name)
+        if st == "online":
+            return True
+        try:
+            from services.integration_resilience import admin_circuit_breaker, ma_circuit_breaker
+            if normalized == "admin":
+                return admin_circuit_breaker.allow_request()
+            if normalized == "ma":
+                return ma_circuit_breaker.allow_request()
+        except Exception:
+            pass
+        return False
 
     async def wait_until_online(self, service_name: str, timeout: Optional[float] = None) -> bool:
         """

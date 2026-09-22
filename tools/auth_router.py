@@ -1,5 +1,6 @@
 import logging
 import os
+from typing import Optional
 from fastapi import APIRouter, Request, HTTPException, Depends, Response
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, EmailStr

@@ -31,17 +31,17 @@ RUN pip install --no-cache-dir --upgrade pip \
 # Copy application source code.
 COPY . .
 
-# Create the persistent-data directory and a non-root application user.
+# Create the persistent-data directories and a non-root application user.
 RUN useradd --create-home --uid 10001 appuser \
-    && mkdir -p /app/data \
+    && mkdir -p /app/data /app/data/upload_files \
     && chown -R appuser:appuser /app
 
 USER appuser
 
-EXPOSE 8000 7001
+EXPOSE 8000 8005 7001
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live')" || exit 1
+    CMD python -c "import os, urllib.request; port = os.getenv('PORT', '8000'); urllib.request.urlopen(f'http://localhost:{port}/health/live')" || exit 1
 
 # Start FastAPI by default (MCP can be started by overriding the command)
-CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+CMD ["sh", "-c", "uvicorn server:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]
