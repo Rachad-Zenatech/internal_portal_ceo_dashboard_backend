@@ -20,7 +20,6 @@ services:
 
     ports:
       - "80:8000"
-      - "8005:8000"
 
     volumes:
       - ./data:/app/data
@@ -33,14 +32,6 @@ services:
 
     environment:
       - APP_ENV=production
-      - PORT=8000
-      - MCP_PORT=${MCP_PORT:-7001}
-      - ADMIN_PORTAL_API_URL=${ADMIN_PORTAL_API_URL:-http://host.docker.internal:8002}
-      - FINANCE_PORTAL_API_URL=${FINANCE_PORTAL_API_URL:-http://host.docker.internal:8001}
-      - MA_PORTAL_API_URL=${MA_PORTAL_API_URL:-http://host.docker.internal:8000}
-      - CEO_DATA_API_URL=${CEO_DATA_API_URL:-http://127.0.0.1:8000}
-      - MQTT_HOST=mqtt
-      - MQTT_PORT=1883
 
     extra_hosts:
       - "host.docker.internal:host-gateway"
