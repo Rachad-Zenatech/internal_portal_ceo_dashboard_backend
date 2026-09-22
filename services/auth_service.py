@@ -5,7 +5,7 @@ import datetime
 import contextvars
 import os
 import secrets
-from fastapi import Cookie, Depends, Header, HTTPException, Response
+from fastapi import Cookie, Depends, Header, HTTPException, Query, Response, Query
 from typing import Optional
 
 JWT_SECRET = os.environ.get("JWT_SECRET") or os.environ.get("SESSION_SECRET")
@@ -307,11 +307,12 @@ async def getUserToolPermissions(role_ids: list):
 async def get_current_user_id_dependency(
     authorization: Optional[str] = Header(None),
     access_token: Optional[str] = Cookie(None, alias=AUTH_COOKIE_NAME),
+    token_query: Optional[str] = Query(None, alias="token"),
 ) -> UUID:
     bearer_token = None
     if authorization and authorization.startswith("Bearer "):
         bearer_token = authorization.removeprefix("Bearer ").strip()
-    token = bearer_token or access_token
+    token = bearer_token or access_token or token_query
     if not token:
         raise HTTPException(status_code=401, detail='Not authenticated')
     payload = verify_token(token)

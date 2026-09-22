@@ -5,7 +5,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     APP_ENV=production \
     TESSERACT_CMD=/usr/bin/tesseract \
     MCP_HOST=0.0.0.0 \
-    MCP_PORT=8001
+    MCP_PORT=7001
 
 WORKDIR /app
 
@@ -38,10 +38,10 @@ RUN useradd --create-home --uid 10001 appuser \
 
 USER appuser
 
-EXPOSE 8000 8001
+EXPOSE 8000 7001
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live')" || exit 1
 
-# Start both FastAPI (background) and MCP server (foreground)
-CMD ["sh", "-c", "uvicorn server:app --host 0.0.0.0 --port 8000 --workers 1 & python server.py"]
+# Start FastAPI by default (MCP can be started by overriding the command)
+CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

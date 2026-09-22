@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
-FINANCE_API_BASE = os.getenv("FINANCE_PORTAL_API_URL", os.getenv("FINANCE_API_BASE", "http://127.0.0.1:8002"))
+FINANCE_API_BASE = os.getenv("FINANCE_PORTAL_API_URL", os.getenv("FINANCE_API_BASE", "http://127.0.0.1:8001"))
 TIMEOUT_SECONDS = float(os.getenv("FINANCE_INTEGRATION_TIMEOUT_SECONDS", "2.0"))
 CONNECT_TIMEOUT = 0.8
 

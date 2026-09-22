@@ -1,24 +1,52 @@
-﻿services:
+services:
+  mqtt:
+    image: eclipse-mosquitto:2
+    container_name: ceo_mqtt_prod
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./deployment/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+
   api:
     build:
       context: .
       dockerfile: Dockerfile
 
-    image: admin-backend-api:latest
+    image: ceo-backend-api:latest
     container_name: ceo_backend_api_prod
 
     ports:
       - "80:8000"
+      - "8005:8000"
 
     volumes:
       - ./data:/app/data
 
     env_file:
       - path: .env.production
-        required: true
+        required: false
+      - path: .env
+        required: false
 
     environment:
       - APP_ENV=production
+      - MCP_PORT=${MCP_PORT:-7001}
+      - PORT=8000
+      - ADMIN_PORTAL_API_URL=${ADMIN_PORTAL_API_URL:-http://host.docker.internal:8002}
+      - FINANCE_PORTAL_API_URL=${FINANCE_PORTAL_API_URL:-http://host.docker.internal:8001}
+      - MA_PORTAL_API_URL=${MA_PORTAL_API_URL:-http://host.docker.internal:8000}
+      - CEO_DATA_API_URL=${CEO_DATA_API_URL:-http://127.0.0.1:8000}
+      - MQTT_HOST=mqtt
+      - MQTT_PORT=1883
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    depends_on:
+      - mqtt
 
     restart: unless-stopped
 
@@ -40,3 +68,7 @@
       options:
         max-size: "10m"
         max-file: "5"
+
+volumes:
+  mosquitto_data:
+  mosquitto_log:
