@@ -3,10 +3,10 @@ FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     APP_ENV=production \
-    PORT=8005 \
+    PORT=8000 \
     HOST=0.0.0.0 \
     MCP_HOST=0.0.0.0 \
-    MCP_PORT=8006 \
+    MCP_PORT=7001 \
     TESSERACT_CMD=/usr/bin/tesseract \
     DATA_PATH=/app/data \
     UPLOAD_FILES_DIR=/app/data/upload_files
