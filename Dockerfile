@@ -3,9 +3,11 @@ FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     APP_ENV=production \
-    TESSERACT_CMD=/usr/bin/tesseract \
+    PORT=8000 \
+    HOST=0.0.0.0 \
     MCP_HOST=0.0.0.0 \
-    MCP_PORT=7001
+    MCP_PORT=7001 \
+    TESSERACT_CMD=/usr/bin/tesseract
 
 WORKDIR /app
 
