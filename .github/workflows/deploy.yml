@@ -432,6 +432,8 @@ jobs:
           DLX_EXCHANGE: ${{ secrets.DLX_EXCHANGE || 'ceo.commands.dlx' }}
           TESSERACT_CMD: ${{ secrets.TESSERACT_CMD || '/usr/bin/tesseract' }}
           UPLOAD_S3_PREFIX: ${{ secrets.UPLOAD_S3_PREFIX || 'data' }}
+          PORT: ${{ secrets.PORT }}
+          MCP_PORT: ${{ secrets.MCP_PORT }}
         run: |
           install -m 600 /dev/null ec2-key.pem
           printf '%s\n' "$EC2_SSH_KEY" > ec2-key.pem
@@ -453,7 +455,7 @@ jobs:
             echo "HOST=0.0.0.0"
             echo "PORT=8005"
             echo "MCP_HOST=0.0.0.0"
-            echo "MCP_PORT=8006"
+            echo "MCP_PORT=8000"
             echo "SLOW_REQUEST_MS=2000"
             printf 'DATABASE_URL=%s\n' "$DATABASE_URL"
             printf 'DATABASE_SSL=%s\n' "$DATABASE_SSL"
