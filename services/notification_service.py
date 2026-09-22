@@ -1,4 +1,10 @@
+from __future__ import annotations
+
 import asyncio
+from typing import List, Union
+from uuid import UUID
+from postgresql_db.database import execute, fetch_all, fetch_one
+from models.notification_model import NotificationCreate, NotificationResponse
 
 class NotificationBroadcaster:
     def __init__(self):
@@ -16,11 +22,6 @@ class NotificationBroadcaster:
             queue.put_nowait(notification)
 
 broadcaster = NotificationBroadcaster()
-
-from typing import List, Union
-from uuid import UUID
-from postgresql_db.database import execute, fetch_all, fetch_one
-from models.notification_model import NotificationCreate, NotificationResponse
 
 async def create_notification(data: NotificationCreate) -> NotificationResponse:
     sql = """
