@@ -1,3 +1,22 @@
+import asyncio
+
+class NotificationBroadcaster:
+    def __init__(self):
+        self.listeners = []
+
+    def add_listener(self, queue: asyncio.Queue):
+        self.listeners.append(queue)
+
+    def remove_listener(self, queue: asyncio.Queue):
+        if queue in self.listeners:
+            self.listeners.remove(queue)
+
+    def broadcast(self, notification: NotificationResponse):
+        for queue in self.listeners:
+            queue.put_nowait(notification)
+
+broadcaster = NotificationBroadcaster()
+
 from typing import List, Union
 from uuid import UUID
 from postgresql_db.database import execute, fetch_all, fetch_one
@@ -21,7 +40,9 @@ async def create_notification(data: NotificationCreate) -> NotificationResponse:
     )
     if not row:
         raise Exception("Failed to create notification")
-    return NotificationResponse(**row)
+    res = NotificationResponse(**row)
+    broadcaster.broadcast(res)
+    return res
 
 async def get_recent_notifications(user_id: Union[UUID, str], limit: int = 20) -> List[NotificationResponse]:
     sql = """

@@ -366,22 +366,8 @@ async def request_observability(request: Request, call_next):
 
 
 # Broad CORS for multi-app integration on local development and production
-_cors_env = os.getenv("CORS_ALLOWED_ORIGINS", "") or os.getenv("CORS_ORIGINS", "")
-if _cors_env:
-    cors_origins = [orig.strip() for orig in _cors_env.split(",") if orig.strip()]
-else:
-    cors_origins = [
-        "http://localhost:5175",
-        "http://localhost:5174",
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "http://localhost:8090",
-        "http://localhost:8001",
-        "http://localhost:8005",
-        "http://127.0.0.1:5175",
-        "http://127.0.0.1:5174",
-        "http://127.0.0.1:5173",
-    ]
+_cors_env = os.getenv("CORS_ORIGINS", "") or os.getenv("CORS_ALLOWED_ORIGINS", "")
+cors_origins = [orig.strip() for orig in _cors_env.split(",") if orig.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
@@ -396,5 +382,5 @@ if __name__ == "__main__":
     mcp.run(
         transport="streamable-http",
         host=os.getenv("MCP_HOST", "0.0.0.0"),
-        port=int(os.getenv("MCP_PORT")),
+        port=int(os.getenv("MCP_PORT", "7001")),
     )

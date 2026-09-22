@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
-cd /mnt/c/dev/enterprise_system/mcp-server
+set -euo pipefail
+
+cd /mnt/c/dev/ceo-dashboard/back/internal_portal_ceo_dashboard_backend
 export APP_ENV=development
-exec ./venv/bin/python server.py
+exec ./venv/bin/python -m uvicorn server:app --host 0.0.0.0 --port 8005 --reload --timeout-graceful-shutdown 2

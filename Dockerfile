@@ -7,9 +7,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     HOST=0.0.0.0 \
     MCP_HOST=0.0.0.0 \
     MCP_PORT=7001 \
-    TESSERACT_CMD=/usr/bin/tesseract \
-    DATA_PATH=/app/data \
-    UPLOAD_FILES_DIR=/app/data/upload_files
+    TESSERACT_CMD=/usr/bin/tesseract
 
 WORKDIR /app
 
@@ -20,7 +18,6 @@ RUN apt-get update \
     build-essential \
     python3-dev \
     libpq-dev \
-    postgresql-client \
     tesseract-ocr \
     poppler-utils \
     gcc \
@@ -43,10 +40,10 @@ RUN useradd --create-home --uid 10001 appuser \
 
 USER appuser
 
-EXPOSE 8005 8006 8000
+EXPOSE 8000 8005 7001
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD python -c "import os, urllib.request; port = os.getenv('PORT', '8005'); urllib.request.urlopen(f'http://localhost:{port}/health/live')" || exit 1
+    CMD python -c "import os, urllib.request; port = os.getenv('PORT', '8000'); urllib.request.urlopen(f'http://localhost:{port}/health/live')" || exit 1
 
-# Start both FastAPI (background) and MCP server (foreground)
-CMD ["sh", "-c", "uvicorn server:app --host 0.0.0.0 --port ${PORT:-8005} --workers 1 & python server.py"]
+# Start FastAPI by default (MCP can be started by overriding the command)
+CMD ["sh", "-c", "uvicorn server:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]

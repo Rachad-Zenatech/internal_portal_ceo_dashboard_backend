@@ -46,3 +46,36 @@ async def api_clear_read(user_id: UUID = Depends(get_current_user_id_dependency)
 async def api_clear_all(user_id: UUID = Depends(get_current_user_id_dependency)):
     await clear_all_notifications(user_id)
     return {"success": True}
+
+import asyncio
+from fastapi import Request
+from fastapi.responses import StreamingResponse
+from services.notification_service import broadcaster
+
+@notification_router.get("/notifications/stream")
+async def api_notification_stream(request: Request, user_id: UUID = Depends(get_current_user_id_dependency)):
+    async def event_generator():
+        q = asyncio.Queue()
+        broadcaster.add_listener(q)
+        try:
+            yield ": connected\n\n"
+            while True:
+                msg = await q.get()
+                if msg.user_id is None or str(msg.user_id).lower() == str(user_id).lower():
+                    yield f"data: {msg.model_dump_json()}\n\n"
+        except (asyncio.CancelledError, GeneratorExit):
+            pass
+        except Exception:
+            pass
+        finally:
+            broadcaster.remove_listener(q)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

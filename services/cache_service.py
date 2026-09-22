@@ -98,4 +98,3 @@ async def emit_cache_invalidation(
         await ws_manager.broadcast(ws_event)
     except Exception as exc:
         logger.debug(f"[CacheService] Could not broadcast cache invalidation to WebSocket: {exc}")
-
