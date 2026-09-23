@@ -17,7 +17,6 @@ def max_upload_bytes() -> int:
         int(os.getenv("MAX_UPLOAD_BYTES", str(DEFAULT_MAX_UPLOAD_BYTES))),
     )
 
-
 async def read_upload_limited(
     upload: UploadFile,
     *,
