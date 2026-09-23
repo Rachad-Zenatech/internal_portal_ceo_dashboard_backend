@@ -35,10 +35,25 @@ async def ensure_mqtt_broker_running(port: Optional[int] = None) -> bool:
     broker_port = port or int(os.getenv("MQTT_PORT", "1883"))
     broker_host = os.getenv("MQTT_HOST", "127.0.0.1")
 
-    # If port 1883 is already running (e.g. Docker Mosquitto or existing instance), don't start duplicate
+    # If pointing to a dedicated container/remote broker (e.g. 'mqtt'), wait for it and avoid starting embedded broker
+    is_remote = broker_host not in ("127.0.0.1", "localhost", "0.0.0.0")
+    if is_remote:
+        for attempt in range(5):
+            if is_port_in_use(broker_port, broker_host):
+                logger.info(f"[MQTT Engine] Detected active MQTT broker on {broker_host}:{broker_port}")
+                return False
+            await asyncio.sleep(1.0)
+        logger.warning(
+            f"[MQTT Engine] Configured external broker {broker_host}:{broker_port} is not reachable yet. "
+            "Skipping embedded broker startup in containerized mode."
+        )
+        return False
+
+    # If port 1883 is already running (e.g. Docker Mosquitto or existing local instance), don't start duplicate
     if is_port_in_use(broker_port, broker_host):
         logger.info(f"[MQTT Engine] Detected active MQTT broker on {broker_host}:{broker_port}")
         return False
+
 
     config = {
         "listeners": {
