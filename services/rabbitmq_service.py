@@ -5,6 +5,7 @@ and dead-letter queue routing for asynchronous cross-service messaging.
 """
 
 import os
+import re
 import json
 import asyncio
 import logging
@@ -31,25 +32,71 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-# Configurable RabbitMQ settings
-RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "127.0.0.1")
-RABBITMQ_PORT = int(os.getenv("RABBITMQ_PORT", "5672"))
-RABBITMQ_USER = os.getenv("RABBITMQ_USERNAME") or os.getenv("RABBITMQ_USER", "guest")
-RABBITMQ_PASS = os.getenv("RABBITMQ_PASSWORD") or os.getenv("RABBITMQ_PASS", "guest")
+
+def _sanitize_amqp_url(url: str) -> str:
+    """Mask password from AMQP URLs to prevent logging credentials."""
+    if not url:
+        return ""
+    return re.sub(r"://([^:]+):([^@]+)@", r"://\1:****@", url)
+
+
+def get_rabbitmq_host() -> str:
+    return os.getenv("RABBITMQ_HOST", "127.0.0.1")
+
+
+def get_rabbitmq_port() -> int:
+    try:
+        return int(os.getenv("RABBITMQ_PORT", "5672"))
+    except (ValueError, TypeError):
+        return 5672
+
+
+def get_rabbitmq_user() -> str:
+    return (
+        os.getenv("RABBITMQ_DEFAULT_USER")
+        or os.getenv("RABBITMQ_USERNAME")
+        or os.getenv("RABBITMQ_USER")
+        or "guest"
+    )
+
+
+def get_rabbitmq_password() -> str:
+    return (
+        os.getenv("RABBITMQ_DEFAULT_PASS")
+        or os.getenv("RABBITMQ_PASSWORD")
+        or os.getenv("RABBITMQ_PASS")
+        or "guest"
+    )
 
 
 def get_rabbitmq_url() -> str:
-    if os.getenv("RABBITMQ_URL"):
-        return os.getenv("RABBITMQ_URL")
-    return f"amqp://{RABBITMQ_USER}:{RABBITMQ_PASS}@{RABBITMQ_HOST}:{RABBITMQ_PORT}/"
+    explicit = os.getenv("RABBITMQ_URL")
+    if explicit:
+        return explicit
+    host = get_rabbitmq_host()
+    port = get_rabbitmq_port()
+    user = get_rabbitmq_user()
+    password = get_rabbitmq_password()
+    return f"amqp://{user}:{password}@{host}:{port}/"
 
 
-RABBITMQ_URL = get_rabbitmq_url()
-COMMANDS_EXCHANGE_NAME = os.getenv("COMMANDS_EXCHANGE", "ceo.commands")
-EVENTS_EXCHANGE_NAME = os.getenv("EVENTS_EXCHANGE", "service.events")
-DLX_EXCHANGE_NAME = os.getenv("DLX_EXCHANGE", "ceo.commands.dlx")
+def get_commands_exchange() -> str:
+    return os.getenv("COMMANDS_EXCHANGE", "ceo.commands")
 
-PREFETCH_COUNT = int(os.getenv("RABBITMQ_PREFETCH", "20"))
+
+def get_events_exchange() -> str:
+    return os.getenv("EVENTS_EXCHANGE", "service.events")
+
+
+def get_dlx_exchange() -> str:
+    return os.getenv("DLX_EXCHANGE", "ceo.commands.dlx")
+
+
+def get_prefetch_count() -> int:
+    try:
+        return int(os.getenv("RABBITMQ_PREFETCH", "20"))
+    except (ValueError, TypeError):
+        return 20
 
 
 class InMemoryMessageBroker:
@@ -95,8 +142,8 @@ in_memory_broker = InMemoryMessageBroker()
 
 
 class RabbitMQManager:
-    def __init__(self, amqp_url: str = RABBITMQ_URL):
-        self.amqp_url = amqp_url
+    def __init__(self, amqp_url: Optional[str] = None):
+        self._custom_amqp_url = amqp_url
         self._connection: Optional[AbstractRobustConnection] = None
         self._channel: Optional[AbstractRobustChannel] = None
         self._commands_exchange: Optional[AbstractExchange] = None
@@ -108,13 +155,21 @@ class RabbitMQManager:
         self._in_memory_tasks: Set[asyncio.Task] = set()
 
     @property
+    def amqp_url(self) -> str:
+        return self._custom_amqp_url or get_rabbitmq_url()
+
+    @amqp_url.setter
+    def amqp_url(self, value: str):
+        self._custom_amqp_url = value
+
+    @property
     def is_connected(self) -> bool:
         return self._is_connected and self._connection is not None and not self._connection.is_closed
 
     async def connect(self, max_retries: int = 3, retry_delay: float = 1.0) -> bool:
         """
         Attempts to connect to RabbitMQ broker and initialize topology.
-        If connection fails, switches to in-memory fallback so CEO dashboard remains operational.
+        If connection fails, switches to in-memory fallback so the service remains operational.
         """
         async with self._lock:
             if self.is_connected:
@@ -126,29 +181,34 @@ class RabbitMQManager:
                 self._is_connected = False
                 return False
 
-            candidates = [
-                self.amqp_url,
-                get_rabbitmq_url(),
-                f"amqp://{RABBITMQ_USER}:{RABBITMQ_PASS}@{RABBITMQ_HOST}:{RABBITMQ_PORT}/",
-                f"amqp://{RABBITMQ_USER}:{RABBITMQ_PASS}@rabbitmq:5672/",
-                f"amqp://{RABBITMQ_USER}:{RABBITMQ_PASS}@127.0.0.1:5672/",
-            ]
-            unique_candidates = []
-            for c in candidates:
-                if c and c not in unique_candidates:
-                    unique_candidates.append(c)
+            base_url = self.amqp_url
+            candidates = [base_url]
+
+            host = get_rabbitmq_host()
+            port = get_rabbitmq_port()
+            user = get_rabbitmq_user()
+            password = get_rabbitmq_password()
+
+            for alt_host in [host, "rabbitmq", "127.0.0.1", "host.docker.internal"]:
+                if alt_host:
+                    alt_url = f"amqp://{user}:{password}@{alt_host}:{port}/"
+                    if alt_url not in candidates:
+                        candidates.append(alt_url)
+
+            unique_candidates = [c for c in candidates if c]
 
             for attempt in range(1, max_retries + 1):
                 for target_url in unique_candidates:
+                    masked_url = _sanitize_amqp_url(target_url)
                     try:
-                        logger.info(f"Connecting to RabbitMQ at {target_url} (attempt {attempt}/{max_retries})...")
+                        logger.info(f"Connecting to RabbitMQ at {masked_url} (attempt {attempt}/{max_retries})...")
                         self._connection = await aio_pika.connect_robust(
                             target_url,
                             timeout=3.0,
                         )
                         self.amqp_url = target_url
                         self._channel = await self._connection.channel(publisher_confirms=True)
-                        await self._channel.set_qos(prefetch_count=PREFETCH_COUNT)
+                        await self._channel.set_qos(prefetch_count=get_prefetch_count())
 
                         await self._setup_topology()
 
@@ -157,7 +217,7 @@ class RabbitMQManager:
                         logger.info("RabbitMQ connection and topology successfully initialized.")
                         return True
                     except Exception as exc:
-                        logger.debug(f"RabbitMQ candidate {target_url} attempt {attempt} failed: {exc}")
+                        logger.debug(f"RabbitMQ candidate {masked_url} attempt {attempt} failed: {exc}")
 
                 if attempt < max_retries:
                     await asyncio.sleep(retry_delay * attempt)
@@ -172,9 +232,13 @@ class RabbitMQManager:
         if not self._channel:
             return
 
+        dlx_name = get_dlx_exchange()
+        commands_exchange_name = get_commands_exchange()
+        events_exchange_name = get_events_exchange()
+
         # 1. Dead Letter Exchange & Queues
         self._dlx_exchange = await self._channel.declare_exchange(
-            DLX_EXCHANGE_NAME,
+            dlx_name,
             aio_pika.ExchangeType.TOPIC,
             durable=True,
         )
@@ -183,16 +247,16 @@ class RabbitMQManager:
         ma_dlq = await self._channel.declare_queue("ma.commands.dlq", durable=True)
         await ma_dlq.bind(self._dlx_exchange, routing_key="ma.#")
 
-        # 2. Main Commands Exchange (ceo.commands)
+        # 2. Main Commands Exchange
         self._commands_exchange = await self._channel.declare_exchange(
-            COMMANDS_EXCHANGE_NAME,
+            commands_exchange_name,
             aio_pika.ExchangeType.TOPIC,
             durable=True,
         )
 
-        # 3. Main Events Exchange (service.events)
+        # 3. Main Events Exchange
         self._events_exchange = await self._channel.declare_exchange(
-            EVENTS_EXCHANGE_NAME,
+            events_exchange_name,
             aio_pika.ExchangeType.TOPIC,
             durable=True,
         )
@@ -202,7 +266,7 @@ class RabbitMQManager:
             "administration.commands",
             durable=True,
             arguments={
-                "x-dead-letter-exchange": DLX_EXCHANGE_NAME,
+                "x-dead-letter-exchange": dlx_name,
                 "x-dead-letter-routing-key": "administration.dlq",
             },
         )
@@ -212,7 +276,7 @@ class RabbitMQManager:
             "ma.commands",
             durable=True,
             arguments={
-                "x-dead-letter-exchange": DLX_EXCHANGE_NAME,
+                "x-dead-letter-exchange": dlx_name,
                 "x-dead-letter-routing-key": "ma.dlq",
             },
         )
@@ -256,7 +320,7 @@ class RabbitMQManager:
                     message_id=message_id,
                 )
                 # publisher_confirms ensures broker accepted the message
-                confirmation = await exchange.publish(message, routing_key=routing_key)
+                await exchange.publish(message, routing_key=routing_key)
                 return True
             except Exception as exc:
                 logger.warning(f"RabbitMQ publish error: {exc}. Falling back to in-memory buffer.")
@@ -289,7 +353,6 @@ class RabbitMQManager:
                 logger.warning(f"Failed to consume from live RabbitMQ queue {queue_name}: {exc}")
 
         # Fallback consumption from in-memory queue
-        asyncio.create_task(self._consume_in_memory(queue_name, message_handler))
         task = asyncio.create_task(
             self._consume_in_memory(queue_name, message_handler),
             name=f"in-memory-consumer-{queue_name}",
