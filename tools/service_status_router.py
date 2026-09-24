@@ -89,8 +89,7 @@ def _on_registry_status_change(service: str, status: str, updated_at: str):
         "updatedAt": updated_at,
     }
     try:
-        loop = asyncio.get_running_loop()
-        loop.create_task(ws_manager.broadcast(event))
+        asyncio.get_running_loop()
         create_background_task(ws_manager.broadcast(event), name="ws-broadcast-status-change")
     except RuntimeError:
         pass
@@ -98,8 +97,7 @@ def _on_registry_status_change(service: str, status: str, updated_at: str):
 
 def _on_registry_business_event(event_dict: dict):
     try:
-        loop = asyncio.get_running_loop()
-        loop.create_task(ws_manager.broadcast(event_dict))
+        asyncio.get_running_loop()
         create_background_task(ws_manager.broadcast(event_dict), name="ws-broadcast-registry-business-event")
     except RuntimeError:
         pass
@@ -188,7 +186,10 @@ async def websocket_service_status(
                 except Exception:
                     break
     except (WebSocketDisconnect, asyncio.CancelledError):
-        await ws_manager.disconnect(websocket)
+        pass
     except Exception as exc:
         logger.debug(f"[WebSocket] Connection handler error: {exc}")
+    finally:
+        # Must run on every exit path, including the keepalive `break` above,
+        # otherwise the socket stays registered and the client count only grows.
         await ws_manager.disconnect(websocket)
