@@ -59,8 +59,23 @@ async def ensure_mqtt_broker_running(port: Optional[int] = None) -> bool:
     mqtt_pass = os.getenv("MQTT_PASSWORD")
 
     auth_config: dict = {
-        "allow-anonymous": not bool(mqtt_user and mqtt_pass),
+        "allow-anonymous": True,
     }
+
+    if mqtt_user and mqtt_pass:
+        pw_dir = os.path.join(os.getcwd(), "data")
+        os.makedirs(pw_dir, exist_ok=True)
+        pw_file = os.path.join(pw_dir, ".mqtt_passwords")
+        try:
+            with open(pw_file, "w", encoding="utf-8") as f:
+                f.write(f"{mqtt_user}:{mqtt_pass}\n")
+            auth_config["plugins"] = ["auth_file", "auth_anonymous"]
+            auth_config["password-file"] = pw_file
+        except Exception as err:
+            logger.warning(f"[MQTT Engine] Could not create password file: {err}")
+            auth_config["plugins"] = ["auth_anonymous"]
+    else:
+        auth_config["plugins"] = ["auth_anonymous"]
 
     config = {
         "listeners": {
