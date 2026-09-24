@@ -212,12 +212,9 @@ cython_debug/
 # Temporary file for partial code execution
 tempCodeRunnerFile.py
 
-# Server-side archived uploads
-data/upload_files/
-
-# Generated GL import dry-run previews and local mapping input
-data/gl_dry_run_previews/
-data/sources/input/account_split_mapping_1to1.json
+# Runtime and uploaded data
+data/*
+!data/.gitkeep
 
 # Ruff stuff:
 .ruff_cache/
