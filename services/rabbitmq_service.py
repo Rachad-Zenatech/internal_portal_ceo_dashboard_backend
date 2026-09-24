@@ -41,7 +41,7 @@ def _sanitize_amqp_url(url: str) -> str:
 
 
 def get_rabbitmq_host() -> str:
-    return os.getenv("RABBITMQ_HOST", "127.0.0.1")
+    return os.getenv("RABBITMQ_HOST", "rabbitmq")
 
 
 def get_rabbitmq_port() -> int:
@@ -71,7 +71,7 @@ def get_rabbitmq_password() -> str:
 
 def get_rabbitmq_url() -> str:
     explicit = os.getenv("RABBITMQ_URL")
-    if explicit:
+    if explicit and "host.docker.internal" not in explicit:
         return explicit
     host = get_rabbitmq_host()
     port = get_rabbitmq_port()
@@ -194,14 +194,16 @@ class RabbitMQManager:
                 return False
 
             base_url = self.amqp_url
-            candidates = [base_url]
+            candidates = []
+            if base_url and "host.docker.internal" not in base_url:
+                candidates.append(base_url)
 
             host = get_rabbitmq_host()
             port = get_rabbitmq_port()
             user = get_rabbitmq_user()
             password = get_rabbitmq_password()
 
-            for alt_host in [host, "rabbitmq", "127.0.0.1", "host.docker.internal"]:
+            for alt_host in [host, "rabbitmq", "127.0.0.1"]:
                 if alt_host:
                     alt_url = f"amqp://{user}:{password}@{alt_host}:{port}/"
                     if alt_url not in candidates:

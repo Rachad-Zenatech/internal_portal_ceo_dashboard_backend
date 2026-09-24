@@ -430,7 +430,7 @@ jobs:
           RABBITMQ_PORT: ${{ secrets.RABBITMQ_PORT || '5672' }}
           RABBITMQ_DEFAULT_USER: ${{ secrets.RABBITMQ_DEFAULT_USER || secrets.RABBITMQ_USER }}
           RABBITMQ_DEFAULT_PASS: ${{ secrets.RABBITMQ_DEFAULT_PASS || secrets.RABBITMQ_PASSWORD }}
-          RABBITMQ_URL: ${{ secrets.RABBITMQ_URL || 'amqp://guest:guest@host.docker.internal:5672/' }}
+          RABBITMQ_URL: ${{ secrets.RABBITMQ_URL || 'amqp://guest:guest@rabbitmq:5672/' }}
           COMMANDS_EXCHANGE: ${{ secrets.COMMANDS_EXCHANGE || 'ceo.commands' }}
           EVENTS_EXCHANGE: ${{ secrets.EVENTS_EXCHANGE || 'service.events' }}
           DLX_EXCHANGE: ${{ secrets.DLX_EXCHANGE || 'ceo.commands.dlx' }}
