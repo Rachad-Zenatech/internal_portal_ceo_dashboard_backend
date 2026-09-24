@@ -55,6 +55,13 @@ async def ensure_mqtt_broker_running(port: Optional[int] = None) -> bool:
         return False
 
 
+    mqtt_user = os.getenv("MQTT_USERNAME")
+    mqtt_pass = os.getenv("MQTT_PASSWORD")
+
+    auth_config: dict = {
+        "allow-anonymous": not bool(mqtt_user and mqtt_pass),
+    }
+
     config = {
         "listeners": {
             "default": {
@@ -63,10 +70,8 @@ async def ensure_mqtt_broker_running(port: Optional[int] = None) -> bool:
                 "max_connections": 100,
             },
         },
-        "sys_interval": 0,
-        "auth": {
-            "allow-anonymous": True,
-        },
+        "sys_interval": 20,
+        "auth": auth_config,
     }
 
     try:
