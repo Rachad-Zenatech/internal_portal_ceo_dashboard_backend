@@ -562,6 +562,14 @@ jobs:
             sudo mkdir -p data data/upload_files
             sudo chown -R 10001:10001 data 2>/dev/null || sudo chmod -R 777 data
 
+            # Ensure swap space (2GB) is configured to protect against OOM kills during builds
+            if [ \$(swapon --show | wc -l) -le 1 ]; then
+              sudo fallocate -l 2G /swapfile 2>/dev/null || sudo dd if=/dev/zero of=/swapfile bs=1M count=2048 2>/dev/null || true
+              sudo chmod 600 /swapfile 2>/dev/null || true
+              sudo mkswap /swapfile 2>/dev/null || true
+              sudo swapon /swapfile 2>/dev/null || true
+            fi
+
             # Ensure EC2 IMDSv2 hop limit is 2 so Docker container can access IAM role
             TOKEN=\$(curl -s -X PUT 'http://169.254.169.254/latest/api/token' -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' 2>/dev/null || true)
             if [ -n \"\$TOKEN\" ]; then

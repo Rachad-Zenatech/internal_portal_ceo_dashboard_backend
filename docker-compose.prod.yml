@@ -9,6 +9,10 @@ services:
       - ./deployment/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - mosquitto_data:/mosquitto/data
       - mosquitto_log:/mosquitto/log
+    deploy:
+      resources:
+        limits:
+          memory: 64M
 
   api:
     build:
@@ -44,6 +48,11 @@ services:
 
     restart: unless-stopped
 
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+
     healthcheck:
       test:
         [
@@ -72,6 +81,10 @@ services:
       - "127.0.0.1:15672:15672"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+    deploy:
+      resources:
+        limits:
+          memory: 384M
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 10s
