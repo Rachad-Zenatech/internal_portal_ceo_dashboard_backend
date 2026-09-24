@@ -32,7 +32,19 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Configurable RabbitMQ settings
-RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@127.0.0.1:5672/")
+RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "127.0.0.1")
+RABBITMQ_PORT = int(os.getenv("RABBITMQ_PORT", "5672"))
+RABBITMQ_USER = os.getenv("RABBITMQ_USERNAME") or os.getenv("RABBITMQ_USER", "guest")
+RABBITMQ_PASS = os.getenv("RABBITMQ_PASSWORD") or os.getenv("RABBITMQ_PASS", "guest")
+
+
+def get_rabbitmq_url() -> str:
+    if os.getenv("RABBITMQ_URL"):
+        return os.getenv("RABBITMQ_URL")
+    return f"amqp://{RABBITMQ_USER}:{RABBITMQ_PASS}@{RABBITMQ_HOST}:{RABBITMQ_PORT}/"
+
+
+RABBITMQ_URL = get_rabbitmq_url()
 COMMANDS_EXCHANGE_NAME = os.getenv("COMMANDS_EXCHANGE", "ceo.commands")
 EVENTS_EXCHANGE_NAME = os.getenv("EVENTS_EXCHANGE", "service.events")
 DLX_EXCHANGE_NAME = os.getenv("DLX_EXCHANGE", "ceo.commands.dlx")
@@ -114,16 +126,20 @@ class RabbitMQManager:
                 self._is_connected = False
                 return False
 
-            candidates = [self.amqp_url]
-            docker_url = "amqp://guest:guest@rabbitmq:5672/"
-            local_url = "amqp://guest:guest@127.0.0.1:5672/"
-            if docker_url not in candidates:
-                candidates.append(docker_url)
-            if local_url not in candidates:
-                candidates.append(local_url)
+            candidates = [
+                self.amqp_url,
+                get_rabbitmq_url(),
+                f"amqp://{RABBITMQ_USER}:{RABBITMQ_PASS}@{RABBITMQ_HOST}:{RABBITMQ_PORT}/",
+                f"amqp://{RABBITMQ_USER}:{RABBITMQ_PASS}@rabbitmq:5672/",
+                f"amqp://{RABBITMQ_USER}:{RABBITMQ_PASS}@127.0.0.1:5672/",
+            ]
+            unique_candidates = []
+            for c in candidates:
+                if c and c not in unique_candidates:
+                    unique_candidates.append(c)
 
             for attempt in range(1, max_retries + 1):
-                for target_url in candidates:
+                for target_url in unique_candidates:
                     try:
                         logger.info(f"Connecting to RabbitMQ at {target_url} (attempt {attempt}/{max_retries})...")
                         self._connection = await aio_pika.connect_robust(
