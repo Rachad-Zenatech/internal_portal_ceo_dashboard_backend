@@ -559,7 +559,7 @@ jobs:
 
           ssh -o StrictHostKeyChecking=no -i ec2-key.pem "$EC2_USER@$EC2_HOST" "
             cd ~/internal_portal_ceo_dashboard_backend
-            mkdir -p data data/upload_files
+            sudo mkdir -p data data/upload_files
             sudo chown -R 10001:10001 data 2>/dev/null || sudo chmod -R 777 data
 
             # Ensure EC2 IMDSv2 hop limit is 2 so Docker container can access IAM role
