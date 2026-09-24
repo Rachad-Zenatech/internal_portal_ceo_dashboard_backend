@@ -114,26 +114,37 @@ class RabbitMQManager:
                 self._is_connected = False
                 return False
 
+            candidates = [self.amqp_url]
+            docker_url = "amqp://guest:guest@rabbitmq:5672/"
+            local_url = "amqp://guest:guest@127.0.0.1:5672/"
+            if docker_url not in candidates:
+                candidates.append(docker_url)
+            if local_url not in candidates:
+                candidates.append(local_url)
+
             for attempt in range(1, max_retries + 1):
-                try:
-                    logger.info(f"Connecting to RabbitMQ at {self.amqp_url} (attempt {attempt}/{max_retries})...")
-                    self._connection = await aio_pika.connect_robust(
-                        self.amqp_url,
-                        timeout=5.0,
-                    )
-                    self._channel = await self._connection.channel(publisher_confirms=True)
-                    await self._channel.set_qos(prefetch_count=PREFETCH_COUNT)
+                for target_url in candidates:
+                    try:
+                        logger.info(f"Connecting to RabbitMQ at {target_url} (attempt {attempt}/{max_retries})...")
+                        self._connection = await aio_pika.connect_robust(
+                            target_url,
+                            timeout=3.0,
+                        )
+                        self.amqp_url = target_url
+                        self._channel = await self._connection.channel(publisher_confirms=True)
+                        await self._channel.set_qos(prefetch_count=PREFETCH_COUNT)
 
-                    await self._setup_topology()
+                        await self._setup_topology()
 
-                    self._is_connected = True
-                    self._use_fallback = False
-                    logger.info("RabbitMQ connection and topology successfully initialized.")
-                    return True
-                except Exception as exc:
-                    logger.warning(f"RabbitMQ connection attempt {attempt} failed: {exc}")
-                    if attempt < max_retries:
-                        await asyncio.sleep(retry_delay * attempt)
+                        self._is_connected = True
+                        self._use_fallback = False
+                        logger.info("RabbitMQ connection and topology successfully initialized.")
+                        return True
+                    except Exception as exc:
+                        logger.debug(f"RabbitMQ candidate {target_url} attempt {attempt} failed: {exc}")
+
+                if attempt < max_retries:
+                    await asyncio.sleep(retry_delay * attempt)
 
             logger.warning("RabbitMQ is unreachable. Enabling in-memory fallback mode for cross-service messaging.")
             self._use_fallback = True

@@ -36,6 +36,7 @@ services:
 
     depends_on:
       - mqtt
+      - rabbitmq
 
     restart: unless-stopped
 
@@ -58,6 +59,22 @@ services:
         max-size: "10m"
         max-file: "5"
 
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: ceo_rabbitmq_prod
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   mosquitto_data:
   mosquitto_log:
+  rabbitmq_data:
