@@ -99,6 +99,18 @@ def get_prefetch_count() -> int:
         return 20
 
 
+# Backward-compatibility module constants
+COMMANDS_EXCHANGE_NAME = get_commands_exchange()
+EVENTS_EXCHANGE_NAME = get_events_exchange()
+DLX_EXCHANGE_NAME = get_dlx_exchange()
+PREFETCH_COUNT = get_prefetch_count()
+RABBITMQ_HOST = get_rabbitmq_host()
+RABBITMQ_PORT = get_rabbitmq_port()
+RABBITMQ_USER = get_rabbitmq_user()
+RABBITMQ_PASS = get_rabbitmq_password()
+RABBITMQ_URL = get_rabbitmq_url()
+
+
 class InMemoryMessageBroker:
     """
     In-memory fallback & mock broker for unit testing and offline development
