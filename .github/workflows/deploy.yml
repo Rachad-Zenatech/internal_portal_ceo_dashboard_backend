@@ -426,6 +426,10 @@ jobs:
           MQTT_KEEPALIVE_SECONDS: ${{ secrets.MQTT_KEEPALIVE_SECONDS || '15' }}
           SERVICE_NAME: ${{ secrets.SERVICE_NAME || 'ceo-api' }}
           SERVICE_INSTANCE_ID: ${{ secrets.SERVICE_INSTANCE_ID || 'ceo-api-01' }}
+          RABBITMQ_HOST: ${{ secrets.RABBITMQ_HOST || 'rabbitmq' }}
+          RABBITMQ_PORT: ${{ secrets.RABBITMQ_PORT || '5672' }}
+          RABBITMQ_DEFAULT_USER: ${{ secrets.RABBITMQ_DEFAULT_USER || secrets.RABBITMQ_USER }}
+          RABBITMQ_DEFAULT_PASS: ${{ secrets.RABBITMQ_DEFAULT_PASS || secrets.RABBITMQ_PASSWORD }}
           RABBITMQ_URL: ${{ secrets.RABBITMQ_URL || 'amqp://guest:guest@host.docker.internal:5672/' }}
           COMMANDS_EXCHANGE: ${{ secrets.COMMANDS_EXCHANGE || 'ceo.commands' }}
           EVENTS_EXCHANGE: ${{ secrets.EVENTS_EXCHANGE || 'service.events' }}
@@ -526,6 +530,18 @@ jobs:
             printf 'MQTT_KEEPALIVE_SECONDS=%s\n' "$MQTT_KEEPALIVE_SECONDS"
             printf 'SERVICE_NAME=%s\n' "$SERVICE_NAME"
             printf 'SERVICE_INSTANCE_ID=%s\n' "$SERVICE_INSTANCE_ID"
+            if [ -n "$RABBITMQ_HOST" ]; then
+              printf 'RABBITMQ_HOST=%s\n' "$RABBITMQ_HOST"
+            fi
+            if [ -n "$RABBITMQ_PORT" ]; then
+              printf 'RABBITMQ_PORT=%s\n' "$RABBITMQ_PORT"
+            fi
+            if [ -n "$RABBITMQ_DEFAULT_USER" ]; then
+              printf 'RABBITMQ_DEFAULT_USER=%s\n' "$RABBITMQ_DEFAULT_USER"
+            fi
+            if [ -n "$RABBITMQ_DEFAULT_PASS" ]; then
+              printf 'RABBITMQ_DEFAULT_PASS=%s\n' "$RABBITMQ_DEFAULT_PASS"
+            fi
             printf 'RABBITMQ_URL=%s\n' "$RABBITMQ_URL"
             printf 'COMMANDS_EXCHANGE=%s\n' "$COMMANDS_EXCHANGE"
             printf 'EVENTS_EXCHANGE=%s\n' "$EVENTS_EXCHANGE"
