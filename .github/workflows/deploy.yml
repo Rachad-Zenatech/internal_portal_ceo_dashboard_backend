@@ -446,6 +446,7 @@ jobs:
             if [ ! -d ~/internal_portal_ceo_dashboard_backend/.git ]; then
               git clone https://x-access-token:${{ secrets.GITHUB_TOKEN || secrets.PAT_TOKEN || github.token }}@github.com/${{ github.repository }}.git ~/internal_portal_ceo_dashboard_backend
             else
+              sudo chown -R "$EC2_USER:$EC2_USER" ~/internal_portal_ceo_dashboard_backend 2>/dev/null || true
               cd ~/internal_portal_ceo_dashboard_backend && \
               git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN || secrets.PAT_TOKEN || github.token }}@github.com/${{ github.repository }}.git && \
               git fetch origin main && \
