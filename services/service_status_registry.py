@@ -149,10 +149,25 @@ class ServiceStatusRegistry:
         probe_urls = []
         if norm == "admin":
             admin_base = os.getenv("ADMIN_PORTAL_API_URL", "http://127.0.0.1:8002").rstrip("/")
-            probe_urls = [f"{admin_base}/health/live", f"{admin_base}/"]
+            probe_urls = [
+                f"{admin_base}/health/live",
+                "http://host.docker.internal:8001/health/live",
+                "http://host.docker.internal:8002/health/live",
+                "http://admin_backend_api_prod:8000/health/live",
+                "http://127.0.0.1:8002/health/live",
+                "http://127.0.0.1:8001/health/live",
+            ]
         elif norm == "ma":
-            ma_base = os.getenv("MA_PORTAL_API_URL", "http://127.0.0.1:8000").rstrip("/")
-            probe_urls = [f"{ma_base}/health/live", f"{ma_base}/"]
+            ma_base = os.getenv("MA_PORTAL_API_URL", "http://host.docker.internal:8003").rstrip("/")
+            probe_urls = [
+                f"{ma_base}/health/live",
+                "http://host.docker.internal:8003/health/live",
+                "http://ma_backend_api_prod:8000/health/live",
+                "http://127.0.0.1:8003/health/live",
+                "http://localhost:8003/health/live",
+                "http://host.docker.internal:8000/health/live",
+                "http://127.0.0.1:8000/health/live",
+            ]
 
         for probe_url in probe_urls:
             try:

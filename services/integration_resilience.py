@@ -59,15 +59,20 @@ class CircuitBreaker:
                 logger.debug(f"[CircuitBreaker:{self.name}] State-change listener raised", exc_info=True)
 
     def record_success(self):
-        """Called after a real data call succeeds. Only ever resets the failure count -
-        recovery back to CLOSED is confirmed exclusively by mark_online() (the health poll),
-        never inferred from a single lucky call."""
+        """Called after a real data call succeeds. Resets failure count and transitions to CLOSED."""
+        if self.state != CircuitState.CLOSED:
+            logger.info(
+                f"[CircuitBreaker:{self.name}] Call succeeded. State transitioning "
+                f"from {self.state} -> CLOSED",
+                extra={"event": "circuit_breaker_closed", "circuit": self.name},
+            )
+            self._transition_to(CircuitState.CLOSED)
         self.failure_count = 0
         self.last_failure_time = None
 
     def record_failure(self, error: Exception):
         """Called after a real data call fails. Lets an outage that happens between health
-        polls be detected immediately, without waiting for the next poll tick."""
+        polls be detected immediately."""
         self.failure_count += 1
         self.last_failure_time = time.time()
 
@@ -80,8 +85,7 @@ class CircuitBreaker:
             self._transition_to(CircuitState.OPEN)
 
     def mark_online(self) -> None:
-        """Called by the lightweight, frequent health poll when it confirms the service
-        is reachable. This is the only path back to CLOSED - there is no blind timed retry."""
+        """Called when a probe confirms the service is reachable."""
         if self.state != CircuitState.CLOSED:
             logger.info(
                 f"[CircuitBreaker:{self.name}] Health check confirmed recovery. State transitioning "
@@ -93,9 +97,7 @@ class CircuitBreaker:
         self.last_failure_time = None
 
     def mark_offline(self, reason: str = "health check failed") -> None:
-        """Called by the lightweight, frequent health poll when it confirms the service is
-        unreachable. Opens the circuit immediately so no data call even attempts the network
-        until a later health check confirms recovery."""
+        """Called when a probe confirms the service is unreachable."""
         if self.state != CircuitState.OPEN:
             logger.warning(
                 f"[CircuitBreaker:{self.name}] Health check confirmed outage ({reason}). "
@@ -105,9 +107,17 @@ class CircuitBreaker:
         self._transition_to(CircuitState.OPEN)
 
     def allow_request(self) -> bool:
-        """Pure state check - no timers, no guessing. A call is allowed only while the last
-        health check (or a prior successful call) confirmed the service is reachable."""
-        return self.state != CircuitState.OPEN
+        """A call is allowed if CLOSED, or if OPEN and cooldown has passed (probing in HALF_OPEN)."""
+        if self.state == CircuitState.CLOSED:
+            return True
+        if self.state == CircuitState.OPEN:
+            if self.last_failure_time and (time.time() - self.last_failure_time) > 30.0:
+                self._transition_to(CircuitState.HALF_OPEN)
+                return True
+            return False
+        if self.state == CircuitState.HALF_OPEN:
+            return True
+        return True
 
 
 class ResilientCacheEntry:
@@ -133,11 +143,9 @@ class ResilientCache:
         return None, None
 
 
-# Global instances per integration - fast 1.2s timeout and single-failure trip for instant offline failover.
-# Recovery is confirmed exclusively by the lightweight health poll (see poll_portal_health in
-# tools/ceo_integration_router.py) calling mark_online() - there is no blind timed retry here.
-admin_circuit_breaker = CircuitBreaker("AdminPortal", failure_threshold=1, request_timeout_seconds=1.2)
-ma_circuit_breaker = CircuitBreaker("MASystem", failure_threshold=1, request_timeout_seconds=1.2)
+# Global instances per integration - 3-failure threshold, 3.0s request timeout, with 30s half-open auto-recovery
+admin_circuit_breaker = CircuitBreaker("AdminPortal", failure_threshold=3, request_timeout_seconds=3.0)
+ma_circuit_breaker = CircuitBreaker("MASystem", failure_threshold=3, request_timeout_seconds=3.0)
 resilient_cache = ResilientCache()
 
 

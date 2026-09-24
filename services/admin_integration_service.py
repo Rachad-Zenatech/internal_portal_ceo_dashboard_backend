@@ -32,19 +32,112 @@ JWT_SECRET = os.environ.get("JWT_SECRET") or os.environ.get("SESSION_SECRET") or
 JWT_ALGORITHM = "HS256"
 JWT_ISSUER = "zenatech-internal-portal"
 
-
 _service_token_cache: Dict[str, Tuple[str, float]] = {}
+_admin_user_id_cache: Dict[str, Tuple[str, Optional[str], float]] = {}
+
+_cached_ma_url: Optional[str] = None
+_cached_ma_url_expires: float = 0.0
+
+_cached_admin_url: Optional[str] = None
+_cached_admin_url_expires: float = 0.0
 
 
-_admin_user_id_cache: Dict[str, Tuple[str, float]] = {}
+async def get_working_ma_api_base() -> str:
+    """
+    Dynamically probes candidate endpoints for the M&A microservice and caches the reachable base URL.
+    """
+    global _cached_ma_url, _cached_ma_url_expires
+    now = time.time()
+    if _cached_ma_url and _cached_ma_url_expires > now:
+        return _cached_ma_url
+
+    configured = os.getenv("MA_PORTAL_API_URL")
+    candidates = []
+    if configured:
+        candidates.append(configured.rstrip("/"))
+    candidates.extend([
+        "http://host.docker.internal:8003",
+        "http://ma_backend_api_prod:8000",
+        "http://127.0.0.1:8003",
+        "http://localhost:8003",
+        "http://host.docker.internal:8000",
+        "http://127.0.0.1:8000",
+        "http://localhost:8000",
+    ])
+
+    seen = set()
+    unique_candidates = []
+    for c in candidates:
+        if c not in seen:
+            seen.add(c)
+            unique_candidates.append(c)
+
+    for candidate in unique_candidates:
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(0.8, connect=0.4)) as client:
+                resp = await client.get(f"{candidate}/health/live")
+                if resp.status_code in (200, 307, 308, 404):
+                    _cached_ma_url = candidate
+                    _cached_ma_url_expires = now + 120.0
+                    return candidate
+        except Exception:
+            continue
+
+    default_url = configured or "http://host.docker.internal:8003"
+    return default_url
 
 
-async def _resolve_admin_user_id(user_id: Optional[UUID] = None) -> str:
+async def get_working_admin_api_base() -> str:
+    """
+    Dynamically probes candidate endpoints for the Admin microservice and caches the reachable base URL.
+    """
+    global _cached_admin_url, _cached_admin_url_expires
+    now = time.time()
+    if _cached_admin_url and _cached_admin_url_expires > now:
+        return _cached_admin_url
+
+    configured = os.getenv("ADMIN_PORTAL_API_URL", os.getenv("ADMIN_API_BASE"))
+    candidates = []
+    if configured:
+        candidates.append(configured.rstrip("/"))
+    candidates.extend([
+        "http://host.docker.internal:8001",
+        "http://host.docker.internal:8002",
+        "http://admin_backend_api_prod:8000",
+        "http://127.0.0.1:8002",
+        "http://127.0.0.1:8001",
+        "http://localhost:8002",
+        "http://localhost:8001",
+    ])
+
+    seen = set()
+    unique_candidates = []
+    for c in candidates:
+        if c not in seen:
+            seen.add(c)
+            unique_candidates.append(c)
+
+    for candidate in unique_candidates:
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(0.8, connect=0.4)) as client:
+                resp = await client.get(f"{candidate}/health/live")
+                if resp.status_code in (200, 307, 308, 404):
+                    _cached_admin_url = candidate
+                    _cached_admin_url_expires = now + 120.0
+                    return candidate
+        except Exception:
+            continue
+
+    default_url = configured or "http://127.0.0.1:8002"
+    return default_url
+
+
+async def _resolve_admin_user_info(user_id: Optional[UUID] = None) -> Tuple[str, Optional[str]]:
     now_ts = time.time()
     cache_key = str(user_id) if user_id else "__default__"
     cached = _admin_user_id_cache.get(cache_key)
-    if cached and cached[1] > now_ts:
-        return cached[0]
+    if cached and cached[2] > now_ts:
+        return cached[0], cached[1]
 
     email: Optional[str] = None
     if user_id:
@@ -66,33 +159,35 @@ async def _resolve_admin_user_id(user_id: Optional[UUID] = None) -> str:
             async with admin_pool.acquire() as conn:
                 if email:
                     admin_row = await conn.fetchrow(
-                        "SELECT id FROM users WHERE LOWER(TRIM(email)) = $1 AND is_active = true AND deleted_at IS NULL",
+                        "SELECT id, email FROM users WHERE LOWER(TRIM(email)) = $1 AND is_active = true AND deleted_at IS NULL",
                         email,
                     )
                     if admin_row and admin_row.get("id"):
                         resolved = str(admin_row["id"])
-                        _admin_user_id_cache[cache_key] = (resolved, now_ts + 300)
-                        return resolved
+                        resolved_email = admin_row.get("email") or email
+                        _admin_user_id_cache[cache_key] = (resolved, resolved_email, now_ts + 300)
+                        return resolved, resolved_email
 
                 # If no specific user or email match, pick the primary active super admin in Admin DB
                 admin_row = await conn.fetchrow(
-                    "SELECT id FROM users WHERE is_super_admin = true AND is_active = true AND deleted_at IS NULL ORDER BY created_at ASC LIMIT 1"
+                    "SELECT id, email FROM users WHERE is_super_admin = true AND is_active = true AND deleted_at IS NULL ORDER BY created_at ASC LIMIT 1"
                 )
                 if admin_row and admin_row.get("id"):
                     resolved = str(admin_row["id"])
-                    _admin_user_id_cache[cache_key] = (resolved, now_ts + 300)
-                    return resolved
+                    resolved_email = admin_row.get("email") or "rachad.quintyne@zenatech.com"
+                    _admin_user_id_cache[cache_key] = (resolved, resolved_email, now_ts + 300)
+                    return resolved, resolved_email
     except Exception as exc:
         logger.debug(f"Admin DB pool lookup during user resolution: {exc}")
 
     # 2. Check environment variable
     env_admin_id = os.getenv("DEFAULT_ADMIN_USER_ID", "").strip()
     if env_admin_id:
-        return env_admin_id
+        return env_admin_id, email or "rachad.quintyne@zenatech.com"
 
     # 3. If user_id is provided, try user_id directly
     if user_id:
-        return str(user_id)
+        return str(user_id), email or "rachad.quintyne@zenatech.com"
 
     # 4. Fallback to CEO DB super admin if admin DB is not reachable
     try:
@@ -100,18 +195,23 @@ async def _resolve_admin_user_id(user_id: Optional[UUID] = None) -> str:
         pool = get_pool()
         async with pool.acquire() as conn:
             row = await conn.fetchrow(
-                "SELECT id FROM users WHERE is_active = TRUE AND is_super_admin = TRUE ORDER BY created_at ASC LIMIT 1"
+                "SELECT id, email FROM users WHERE is_active = TRUE AND is_super_admin = TRUE ORDER BY created_at ASC LIMIT 1"
             )
             if row and row.get("id"):
-                return str(row["id"])
+                return str(row["id"]), row.get("email") or "rachad.quintyne@zenatech.com"
     except Exception:
         pass
 
-    return "00000000-0000-0000-0000-000000000000"
+    return "00000000-0000-0000-0000-000000000000", "rachad.quintyne@zenatech.com"
+
+
+async def _resolve_admin_user_id(user_id: Optional[UUID] = None) -> str:
+    uid, _ = await _resolve_admin_user_info(user_id)
+    return uid
 
 
 async def _generate_service_token(user_id: Optional[UUID] = None) -> str:
-    admin_uid = await _resolve_admin_user_id(user_id)
+    admin_uid, admin_email = await _resolve_admin_user_info(user_id)
     now_ts = time.time()
 
     # Return cached token if valid for at least 5 more minutes
@@ -123,6 +223,7 @@ async def _generate_service_token(user_id: Optional[UUID] = None) -> str:
     exp_dt = now + datetime.timedelta(hours=2)
     payload = {
         "sub": admin_uid,
+        "email": admin_email or "rachad.quintyne@zenatech.com",
         "is_super_admin": True,
         "is_service_token": True,
         "iss": JWT_ISSUER,
@@ -1076,7 +1177,8 @@ async def get_ma_pipeline_tasks(limit: int = 50, skip: int = 0, loi_accepted_onl
         try:
             token = await _generate_service_token(user_id=UUID("1623e39f-1d87-4e6d-a6c3-3195c6ab773b"))
             headers = {"Authorization": f"Bearer {token}"}
-            url = f"{MA_API_BASE}/api/pipeline/tasks?limit=1000"
+            base_url = await get_working_ma_api_base()
+            url = f"{base_url}/api/pipeline/tasks?limit=1000"
             client_timeout = httpx.Timeout(TIMEOUT_SECONDS, connect=CONNECT_TIMEOUT)
             async with httpx.AsyncClient(timeout=client_timeout) as client:
                 resp = await client.get(url, headers=headers)
@@ -1089,6 +1191,8 @@ async def get_ma_pipeline_tasks(limit: int = 50, skip: int = 0, loi_accepted_onl
                             service_status_registry.update_instance_status("ma", "ma-01", "online")
                         asyncio.create_task(_persist_ma_deals_to_projection(data))
                         create_background_task(_persist_ma_deals_to_projection(data), name="persist-ma-deals-projection")
+                elif resp.status_code in (401, 403):
+                    logger.warning(f"M&A API auth error (HTTP {resp.status_code}): {resp.text[:200]}")
         except Exception as exc:
             ma_circuit_breaker.record_failure(exc)
             logger.warning(f"Error fetching live M&A tasks: {exc}. Reading local projection.")
@@ -1121,11 +1225,12 @@ async def get_ma_pipeline_summary() -> Dict[str, Any]:
             token = await _generate_service_token(user_id=UUID("1623e39f-1d87-4e6d-a6c3-3195c6ab773b"))
             headers = {"Authorization": f"Bearer {token}"}
             client_timeout = httpx.Timeout(TIMEOUT_SECONDS, connect=CONNECT_TIMEOUT)
+            base_url = await get_working_ma_api_base()
 
             async with httpx.AsyncClient(timeout=client_timeout) as client:
                 r_tasks, r_calls = await asyncio.gather(
-                    client.get(f"{MA_API_BASE}/api/pipeline/tasks", headers=headers),
-                    client.get(f"{MA_API_BASE}/api/pipeline/call-logs", headers=headers),
+                    client.get(f"{base_url}/api/pipeline/tasks", headers=headers),
+                    client.get(f"{base_url}/api/pipeline/call-logs", headers=headers),
                     return_exceptions=True,
                 )
 

@@ -409,7 +409,7 @@ jobs:
           FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
           CORS_ALLOWED_ORIGINS: ${{ secrets.CORS_ALLOWED_ORIGINS || secrets.CORS_ORIGINS || secrets.FRONTEND_URL }}
           ADMIN_PORTAL_API_URL: ${{ secrets.ADMIN_PORTAL_API_URL || 'http://host.docker.internal:8001' }}
-          MA_PORTAL_API_URL: ${{ secrets.MA_PORTAL_API_URL || 'http://host.docker.internal:8000' }}
+          MA_PORTAL_API_URL: ${{ secrets.MA_PORTAL_API_URL || 'http://host.docker.internal:8003' }}
           CEO_DATA_API_URL: ${{ secrets.CEO_DATA_API_URL || 'http://host.docker.internal:8005' }}
           FINANCE_PORTAL_API_URL: ${{ secrets.FINANCE_PORTAL_API_URL || 'http://host.docker.internal:8002' }}
           INTEGRATION_TIMEOUT_SECONDS: ${{ secrets.INTEGRATION_TIMEOUT_SECONDS || '5.0' }}
