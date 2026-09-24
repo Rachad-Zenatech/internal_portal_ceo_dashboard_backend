@@ -102,10 +102,16 @@ class ServiceStatusRegistry:
             return st
         try:
             from services.integration_resilience import admin_circuit_breaker, ma_circuit_breaker
-            if normalized == "admin" and admin_circuit_breaker.state == "CLOSED":
-                return "online"
-            if normalized == "ma" and ma_circuit_breaker.state == "CLOSED":
-                return "online"
+            if normalized == "admin":
+                if admin_circuit_breaker.state == "OPEN":
+                    return "offline"
+                if admin_circuit_breaker.state == "CLOSED" and admin_circuit_breaker.failure_count == 0:
+                    return "online"
+            if normalized == "ma":
+                if ma_circuit_breaker.state == "OPEN":
+                    return "offline"
+                if ma_circuit_breaker.state == "CLOSED" and ma_circuit_breaker.failure_count == 0:
+                    return "online"
         except Exception:
             pass
         return "unknown"

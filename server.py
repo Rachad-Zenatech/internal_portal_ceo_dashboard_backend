@@ -263,46 +263,103 @@ app.add_middleware(
 @app.get("/api/integration/status")
 @app.get("/api/integration-status")
 async def api_ceo_integration_status():
+    from services.service_status_registry import service_status_registry
+    from services.integration_resilience import admin_circuit_breaker, ma_circuit_breaker
+    import httpx
+
+    # 1. Admin Service status (:8002)
+    admin_status = service_status_registry.get_service_status("admin")
+    if admin_status == "unknown":
+        admin_base = os.getenv("ADMIN_PORTAL_API_URL", os.getenv("ADMIN_API_BASE", "http://127.0.0.1:8002")).rstrip("/")
+        try:
+            async with httpx.AsyncClient(timeout=0.6) as client:
+                resp = await client.get(f"{admin_base}/health/live")
+                if resp.status_code in (200, 307, 308):
+                    admin_status = "online"
+                    admin_circuit_breaker.mark_online()
+                else:
+                    admin_status = "offline"
+                    admin_circuit_breaker.mark_offline(f"HTTP {resp.status_code}")
+        except Exception as exc:
+            admin_status = "offline"
+            admin_circuit_breaker.mark_offline(str(exc))
+    elif admin_circuit_breaker.state == "OPEN":
+        admin_status = "offline"
+
+    # 2. M&A Service status (:8000)
+    ma_status = service_status_registry.get_service_status("ma")
+    if ma_status == "unknown":
+        ma_base = os.getenv("MA_PORTAL_API_URL", "http://127.0.0.1:8000").rstrip("/")
+        try:
+            async with httpx.AsyncClient(timeout=0.6) as client:
+                resp = await client.get(f"{ma_base}/health/live")
+                if resp.status_code in (200, 307, 308):
+                    ma_status = "online"
+                    ma_circuit_breaker.mark_online()
+                else:
+                    ma_status = "offline"
+                    ma_circuit_breaker.mark_offline(f"HTTP {resp.status_code}")
+        except Exception as exc:
+            ma_status = "offline"
+            ma_circuit_breaker.mark_offline(str(exc))
+    elif ma_circuit_breaker.state == "OPEN":
+        ma_status = "offline"
+
+    # 3. Enterprise Finance / Database status
+    try:
+        from postgresql_db.database import get_conn
+        async with get_conn() as conn:
+            await conn.fetchval("SELECT 1")
+        finance_status = "online"
+    except Exception:
+        finance_status = "offline"
+
+    services = [
+        {
+            "id": "admin_service",
+            "name": "Administration Portal",
+            "state": "CONNECTED" if admin_status == "online" else "DISCONNECTED",
+            "status": "online" if admin_status == "online" else "offline",
+            "description": "Purchasing, approvals, and organization management",
+            "mode": "Live Sync" if admin_status == "online" else "Offline Fallback",
+            "failure_count": admin_circuit_breaker.failure_count,
+        },
+        {
+            "id": "ma_service",
+            "name": "Mergers & Acquisitions Portal",
+            "state": "CONNECTED" if ma_status == "online" else "DISCONNECTED",
+            "status": "online" if ma_status == "online" else "offline",
+            "description": "Pipeline deals, weekly check-ins, and debt schedules",
+            "mode": "Live Sync" if ma_status == "online" else "Offline Fallback",
+            "failure_count": ma_circuit_breaker.failure_count,
+        },
+        {
+            "id": "finance_service",
+            "name": "Enterprise Finance Portal",
+            "state": "CONNECTED" if finance_status == "online" else "DISCONNECTED",
+            "status": "online" if finance_status == "online" else "offline",
+            "description": "General ledger, bank feeds, and executive financial KPIs",
+            "mode": "Live Sync" if finance_status == "online" else "Offline Fallback",
+            "failure_count": 0,
+        },
+        {
+            "id": "realtime_sse",
+            "name": "Real-time Notification Stream (SSE)",
+            "state": "STREAMING",
+            "status": "online",
+            "description": "Server-Sent Events with 30s zero-DB keep-alive heartbeat",
+            "mode": "Live Stream",
+            "failure_count": 0,
+        },
+    ]
+
+    all_online = all(s["status"] == "online" for s in services if s["id"] != "realtime_sse")
+    any_online = any(s["status"] == "online" for s in services if s["id"] != "realtime_sse")
+    overall_status = "healthy" if all_online else ("degraded" if any_online else "offline")
+
     return {
-        "status": "healthy",
-        "services": [
-            {
-                "id": "admin_service",
-                "name": "Administration Portal",
-                "state": "CONNECTED",
-                "status": "online",
-                "description": "Purchasing, approvals, and organization management",
-                "mode": "Live Sync",
-                "failure_count": 0,
-            },
-            {
-                "id": "ma_service",
-                "name": "Mergers & Acquisitions Portal",
-                "state": "CONNECTED",
-                "status": "online",
-                "description": "Pipeline deals, weekly check-ins, and debt schedules",
-                "mode": "Live Sync",
-                "failure_count": 0,
-            },
-            {
-                "id": "finance_service",
-                "name": "Enterprise Finance Portal",
-                "state": "CONNECTED",
-                "status": "online",
-                "description": "General ledger, bank feeds, and executive financial KPIs",
-                "mode": "Live Sync",
-                "failure_count": 0,
-            },
-            {
-                "id": "realtime_sse",
-                "name": "Real-time Notification Stream (SSE)",
-                "state": "STREAMING",
-                "status": "online",
-                "description": "Server-Sent Events with 30s zero-DB keep-alive heartbeat",
-                "mode": "Live Stream",
-                "failure_count": 0,
-            },
-        ],
+        "status": overall_status,
+        "services": services,
     }
 
 
