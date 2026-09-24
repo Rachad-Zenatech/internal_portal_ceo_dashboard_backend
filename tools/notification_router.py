@@ -58,7 +58,7 @@ async def api_notification_stream(request: Request, user_id: UUID = Depends(get_
         q = asyncio.Queue()
         broadcaster.add_listener(q)
         try:
-            yield ": connected\n\n"
+            yield "retry: 5000\n\n: connected\n\n"
             while True:
                 try:
                     msg = await asyncio.wait_for(q.get(), timeout=30.0)
@@ -79,7 +79,6 @@ async def api_notification_stream(request: Request, user_id: UUID = Depends(get_
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache, no-transform",
-            "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
         },
     )
