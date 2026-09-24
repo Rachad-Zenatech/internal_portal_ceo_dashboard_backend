@@ -166,15 +166,27 @@ async def websocket_service_status(
     await ws_manager.connect(websocket)
     try:
         while True:
-            # Keep receiving pings or messages from client
-            msg = await websocket.receive_text()
-            # If client sends ping, respond with pong
             try:
-                data = json.loads(msg)
-                if data.get("type") == "ping":
-                    await websocket.send_text(json.dumps({"type": "pong", "timestamp": datetime.now(timezone.utc).isoformat()}))
-            except Exception:
-                pass
+                # Receive client messages with a 25s timeout; send keepalive ping on timeout
+                msg = await asyncio.wait_for(websocket.receive_text(), timeout=25.0)
+                try:
+                    data = json.loads(msg)
+                    if data.get("type") == "ping":
+                        await websocket.send_text(json.dumps({
+                            "type": "pong",
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        }))
+                except Exception:
+                    pass
+            except asyncio.TimeoutError:
+                # Proactively send keepalive ping to maintain CloudFront / proxy session active
+                try:
+                    await websocket.send_text(json.dumps({
+                        "type": "ping",
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }))
+                except Exception:
+                    break
     except (WebSocketDisconnect, asyncio.CancelledError):
         await ws_manager.disconnect(websocket)
     except Exception as exc:
