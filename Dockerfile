@@ -36,6 +36,7 @@ COPY . .
 # Create the persistent-data directories and a non-root application user.
 RUN useradd --create-home --uid 10001 appuser \
     && mkdir -p /app/data /app/data/upload_files \
+    && chown -R 10001:10001 /app/data \
     && chown -R appuser:appuser /app
 
 USER appuser
