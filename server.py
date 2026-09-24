@@ -37,6 +37,7 @@ from tools.search import router as search_router
 from tools.rbac_router import router as rbac_router
 from tools.auth_router import router as auth_router
 from tools.notification_router import notification_router
+from tools.notification_ws_router import notification_ws_router
 from tools.observability import router as observability_router
 from tools.dashboard import router as dashboard_router
 from tools.ceo_integration_router import router as ceo_integration_router
@@ -234,6 +235,7 @@ app.include_router(rbac_router, prefix="/api", tags=["RBAC & Configuration"])
 app.include_router(auth_router, prefix="/api", tags=["Authentication"])
 app.include_router(observability_router, prefix="/api", tags=["Observability"])
 app.include_router(notification_router, prefix="/api", tags=["Notifications"], dependencies=authenticated)
+app.include_router(notification_ws_router, tags=["Notifications"])
 
 # Mount Dashboard and CEO Integration APIs
 app.include_router(dashboard_router, prefix="/api/dashboard", tags=["CEO Dashboard Metrics"])
