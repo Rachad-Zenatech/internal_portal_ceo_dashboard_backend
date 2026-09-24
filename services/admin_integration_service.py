@@ -21,9 +21,9 @@ from services.integration_resilience import (
 
 logger = logging.getLogger(__name__)
 
-ADMIN_API_BASE = os.getenv("ADMIN_PORTAL_API_URL", os.getenv("ADMIN_API_BASE", "http://127.0.0.1:8002"))
-CEO_DATA_API_URL = os.getenv("CEO_DATA_API_URL", os.getenv("INTERNAL_API_URL", "http://127.0.0.1:8005"))
-MA_API_BASE = os.getenv("MA_PORTAL_API_URL", "http://127.0.0.1:8000")
+ADMIN_API_BASE = os.getenv("ADMIN_PORTAL_API_URL", os.getenv("ADMIN_API_BASE", "http://127.0.0.1:8002")).rstrip("/")
+CEO_DATA_API_URL = os.getenv("CEO_DATA_API_URL", os.getenv("INTERNAL_API_URL", "http://127.0.0.1:8005")).rstrip("/")
+MA_API_BASE = os.getenv("MA_PORTAL_API_URL", os.getenv("MA_API_BASE", "http://127.0.0.1:8003")).rstrip("/")
 TIMEOUT_SECONDS = float(os.getenv("INTEGRATION_TIMEOUT_SECONDS", "5.0"))
 CONNECT_TIMEOUT = 2.0
 HARD_TIMEOUT_SECONDS = float(os.getenv("HARD_TIMEOUT_SECONDS", "15.0"))
@@ -34,102 +34,6 @@ JWT_ISSUER = "zenatech-internal-portal"
 
 _service_token_cache: Dict[str, Tuple[str, float]] = {}
 _admin_user_id_cache: Dict[str, Tuple[str, Optional[str], float]] = {}
-
-_cached_ma_url: Optional[str] = None
-_cached_ma_url_expires: float = 0.0
-
-_cached_admin_url: Optional[str] = None
-_cached_admin_url_expires: float = 0.0
-
-
-async def get_working_ma_api_base() -> str:
-    """
-    Dynamically probes candidate endpoints for the M&A microservice and caches the reachable base URL.
-    """
-    global _cached_ma_url, _cached_ma_url_expires
-    now = time.time()
-    if _cached_ma_url and _cached_ma_url_expires > now:
-        return _cached_ma_url
-
-    configured = os.getenv("MA_PORTAL_API_URL")
-    candidates = []
-    if configured:
-        candidates.append(configured.rstrip("/"))
-    candidates.extend([
-        "http://host.docker.internal:8003",
-        "http://ma_backend_api_prod:8000",
-        "http://127.0.0.1:8003",
-        "http://localhost:8003",
-        "http://host.docker.internal:8000",
-        "http://127.0.0.1:8000",
-        "http://localhost:8000",
-    ])
-
-    seen = set()
-    unique_candidates = []
-    for c in candidates:
-        if c not in seen:
-            seen.add(c)
-            unique_candidates.append(c)
-
-    for candidate in unique_candidates:
-        try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(0.8, connect=0.4)) as client:
-                resp = await client.get(f"{candidate}/health/live")
-                if resp.status_code in (200, 307, 308, 404):
-                    _cached_ma_url = candidate
-                    _cached_ma_url_expires = now + 120.0
-                    return candidate
-        except Exception:
-            continue
-
-    default_url = configured or "http://host.docker.internal:8003"
-    return default_url
-
-
-async def get_working_admin_api_base() -> str:
-    """
-    Dynamically probes candidate endpoints for the Admin microservice and caches the reachable base URL.
-    """
-    global _cached_admin_url, _cached_admin_url_expires
-    now = time.time()
-    if _cached_admin_url and _cached_admin_url_expires > now:
-        return _cached_admin_url
-
-    configured = os.getenv("ADMIN_PORTAL_API_URL", os.getenv("ADMIN_API_BASE"))
-    candidates = []
-    if configured:
-        candidates.append(configured.rstrip("/"))
-    candidates.extend([
-        "http://host.docker.internal:8001",
-        "http://host.docker.internal:8002",
-        "http://admin_backend_api_prod:8000",
-        "http://127.0.0.1:8002",
-        "http://127.0.0.1:8001",
-        "http://localhost:8002",
-        "http://localhost:8001",
-    ])
-
-    seen = set()
-    unique_candidates = []
-    for c in candidates:
-        if c not in seen:
-            seen.add(c)
-            unique_candidates.append(c)
-
-    for candidate in unique_candidates:
-        try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(0.8, connect=0.4)) as client:
-                resp = await client.get(f"{candidate}/health/live")
-                if resp.status_code in (200, 307, 308, 404):
-                    _cached_admin_url = candidate
-                    _cached_admin_url_expires = now + 120.0
-                    return candidate
-        except Exception:
-            continue
-
-    default_url = configured or "http://127.0.0.1:8002"
-    return default_url
 
 
 async def _resolve_admin_user_info(user_id: Optional[UUID] = None) -> Tuple[str, Optional[str]]:
@@ -1177,8 +1081,7 @@ async def get_ma_pipeline_tasks(limit: int = 50, skip: int = 0, loi_accepted_onl
         try:
             token = await _generate_service_token(user_id=UUID("1623e39f-1d87-4e6d-a6c3-3195c6ab773b"))
             headers = {"Authorization": f"Bearer {token}"}
-            base_url = await get_working_ma_api_base()
-            url = f"{base_url}/api/pipeline/tasks?limit=1000"
+            url = f"{MA_API_BASE}/api/pipeline/tasks?limit=1000"
             client_timeout = httpx.Timeout(TIMEOUT_SECONDS, connect=CONNECT_TIMEOUT)
             async with httpx.AsyncClient(timeout=client_timeout) as client:
                 resp = await client.get(url, headers=headers)
@@ -1225,12 +1128,11 @@ async def get_ma_pipeline_summary() -> Dict[str, Any]:
             token = await _generate_service_token(user_id=UUID("1623e39f-1d87-4e6d-a6c3-3195c6ab773b"))
             headers = {"Authorization": f"Bearer {token}"}
             client_timeout = httpx.Timeout(TIMEOUT_SECONDS, connect=CONNECT_TIMEOUT)
-            base_url = await get_working_ma_api_base()
 
             async with httpx.AsyncClient(timeout=client_timeout) as client:
                 r_tasks, r_calls = await asyncio.gather(
-                    client.get(f"{base_url}/api/pipeline/tasks", headers=headers),
-                    client.get(f"{base_url}/api/pipeline/call-logs", headers=headers),
+                    client.get(f"{MA_API_BASE}/api/pipeline/tasks", headers=headers),
+                    client.get(f"{MA_API_BASE}/api/pipeline/call-logs", headers=headers),
                     return_exceptions=True,
                 )
 

@@ -146,30 +146,15 @@ class ServiceStatusRegistry:
             return True
 
         # Quick HTTP probe check
-        probe_urls = []
+        probe_url = None
         if norm == "admin":
-            admin_base = os.getenv("ADMIN_PORTAL_API_URL", "http://127.0.0.1:8002").rstrip("/")
-            probe_urls = [
-                f"{admin_base}/health/live",
-                "http://host.docker.internal:8001/health/live",
-                "http://host.docker.internal:8002/health/live",
-                "http://admin_backend_api_prod:8000/health/live",
-                "http://127.0.0.1:8002/health/live",
-                "http://127.0.0.1:8001/health/live",
-            ]
+            admin_base = os.getenv("ADMIN_PORTAL_API_URL", os.getenv("ADMIN_API_BASE", "http://127.0.0.1:8002")).rstrip("/")
+            probe_url = f"{admin_base}/health/live"
         elif norm == "ma":
-            ma_base = os.getenv("MA_PORTAL_API_URL", "http://host.docker.internal:8003").rstrip("/")
-            probe_urls = [
-                f"{ma_base}/health/live",
-                "http://host.docker.internal:8003/health/live",
-                "http://ma_backend_api_prod:8000/health/live",
-                "http://127.0.0.1:8003/health/live",
-                "http://localhost:8003/health/live",
-                "http://host.docker.internal:8000/health/live",
-                "http://127.0.0.1:8000/health/live",
-            ]
+            ma_base = os.getenv("MA_PORTAL_API_URL", os.getenv("MA_API_BASE", "http://127.0.0.1:8003")).rstrip("/")
+            probe_url = f"{ma_base}/health/live"
 
-        for probe_url in probe_urls:
+        if probe_url:
             try:
                 async with httpx.AsyncClient(timeout=1.0) as client:
                     resp = await client.get(probe_url)

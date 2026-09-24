@@ -270,56 +270,40 @@ async def api_ceo_integration_status():
     # 1. Admin Service status
     admin_status = service_status_registry.get_service_status("admin")
     if admin_status == "unknown":
-        admin_candidates = [
-            os.getenv("ADMIN_PORTAL_API_URL", os.getenv("ADMIN_API_BASE", "http://127.0.0.1:8002")).rstrip("/"),
-            "http://host.docker.internal:8001",
-            "http://host.docker.internal:8002",
-            "http://admin_backend_api_prod:8000",
-            "http://127.0.0.1:8002",
-            "http://127.0.0.1:8001",
-        ]
-        admin_found = False
-        for admin_base in admin_candidates:
-            try:
-                async with httpx.AsyncClient(timeout=0.4) as client:
-                    resp = await client.get(f"{admin_base}/health/live")
-                    if resp.status_code in (200, 307, 308):
-                        admin_status = "online"
-                        admin_circuit_breaker.mark_online()
-                        admin_found = True
-                        break
-            except Exception:
-                continue
-        if not admin_found and admin_circuit_breaker.state == "OPEN":
+        admin_base = os.getenv("ADMIN_PORTAL_API_URL", os.getenv("ADMIN_API_BASE", "http://127.0.0.1:8002")).rstrip("/")
+        try:
+            async with httpx.AsyncClient(timeout=0.6) as client:
+                resp = await client.get(f"{admin_base}/health/live")
+                if resp.status_code in (200, 307, 308):
+                    admin_status = "online"
+                    admin_circuit_breaker.mark_online()
+                else:
+                    admin_status = "offline"
+                    admin_circuit_breaker.mark_offline(f"HTTP {resp.status_code}")
+        except Exception as exc:
             admin_status = "offline"
+            admin_circuit_breaker.mark_offline(str(exc))
+    elif admin_circuit_breaker.state == "OPEN":
+        admin_status = "offline"
 
     # 2. M&A Service status
     ma_status = service_status_registry.get_service_status("ma")
     if ma_status == "unknown":
-        ma_candidates = [
-            os.getenv("MA_PORTAL_API_URL", "").rstrip("/"),
-            "http://host.docker.internal:8003",
-            "http://ma_backend_api_prod:8000",
-            "http://127.0.0.1:8003",
-            "http://localhost:8003",
-            "http://host.docker.internal:8000",
-            "http://127.0.0.1:8000",
-        ]
-        ma_candidates = [c for c in ma_candidates if c]
-        ma_found = False
-        for ma_base in ma_candidates:
-            try:
-                async with httpx.AsyncClient(timeout=0.4) as client:
-                    resp = await client.get(f"{ma_base}/health/live")
-                    if resp.status_code in (200, 307, 308):
-                        ma_status = "online"
-                        ma_circuit_breaker.mark_online()
-                        ma_found = True
-                        break
-            except Exception:
-                continue
-        if not ma_found and ma_circuit_breaker.state == "OPEN":
+        ma_base = os.getenv("MA_PORTAL_API_URL", os.getenv("MA_API_BASE", "http://127.0.0.1:8003")).rstrip("/")
+        try:
+            async with httpx.AsyncClient(timeout=0.6) as client:
+                resp = await client.get(f"{ma_base}/health/live")
+                if resp.status_code in (200, 307, 308):
+                    ma_status = "online"
+                    ma_circuit_breaker.mark_online()
+                else:
+                    ma_status = "offline"
+                    ma_circuit_breaker.mark_offline(f"HTTP {resp.status_code}")
+        except Exception as exc:
             ma_status = "offline"
+            ma_circuit_breaker.mark_offline(str(exc))
+    elif ma_circuit_breaker.state == "OPEN":
+        ma_status = "offline"
 
     # 3. Enterprise Finance / Database status
     try:
