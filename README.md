@@ -1,246 +1,173 @@
-# CEO Dashboard - Backend API & MCP Server
+﻿# CEO Dashboard Backend (`internal_portal_ceo_dashboard_backend`)
 
-Enterprise backend server for the **ZenaTech CEO Dashboard**, providing REST APIs, Microsoft Entra OAuth authentication, Role-Based Access Control (RBAC), login activity auditing, and Model Context Protocol (MCP) integrations.
+Executive aggregation and command orchestrator backend for ZenaTech. Aggregates live KPIs, financial health, M&A deal pipelines, administrative approvals, and cross-portal health telemetry from subsidiary services (**Admin Portal :8002** and **M&A Portal :8000**).
 
----
-
-## Tech Stack & Architecture
-
-* **Backend Framework**: FastAPI (Python 3.10+) with Uvicorn
-* **Database**: PostgreSQL (connection pool via `asyncpg` + Supabase/AWS RDS)
-* **Authentication**: OAuth 2.0 (Microsoft Entra ID via `Authlib`), JWT (HS256)
-* **AI / Tooling**: FastMCP (Model Context Protocol) & Google Gemini SDK
-* **Frontend**: React + Vite + TailwindCSS (`internal_portal_front`)
-* **Mobile / Emulator**: Android Emulator (`Pixel_7`), Expo Native
+Built with **FastAPI**, **PostgreSQL** (`asyncpg`), **RabbitMQ** (`aio-pika`), **Transactional Outbox & Projection Services**, **FastMCP**, and **AWS S3 / CloudWatch**.
 
 ---
 
-## Port Allocation & Network Matrix
+## System Architecture Diagram
 
-| Service | Port | Local URL | Android Emulator URL | Network / LAN URL |
-| :--- | :--- | :--- | :--- | :--- |
-| **CEO Backend API** | `8005` | `http://localhost:8005` | `http://10.0.2.2:8005` | `http://192.168.1.44:8005` |
-| **Frontend Web (Vite)** | `5174` | `http://localhost:5174` | `http://10.0.2.2:5174` | `http://192.168.1.44:5174` |
-| **Accounting API (mcp-server)** | `8001` | `http://localhost:8001` | `http://10.0.2.2:8001` | `http://192.168.1.44:8001` |
-| **API Docs (Swagger)** | `8005` | `http://localhost:8005/docs` | `http://10.0.2.2:8005/docs` | `http://192.168.1.44:8005/docs` |
+```mermaid
+flowchart TD
+    subgraph Clients [Client Applications]
+        CEOWeb[CEO Web App :5175]
+        CEOMobile[CEO Mobile App Expo :8090]
+        MCPAgent[AI Assistants via FastMCP]
+    end
 
----
+    subgraph CEOGateway [FastAPI Backend Service :8005]
+        AuthRouter[Auth & Microsoft Entra SSO]
+        DashboardRouter[Executive Dashboard & Metrics Router]
+        CEOMARouter[M&A Pipeline Aggregation Router]
+        CEOAdminRouter[Admin Purchasing & Approvals Router]
+        StatusRouter[Service Status & Health Registry]
+        NotifRouter[SSE Stream & Live Alerts]
+        MCPEndpoint[FastMCP Protocol Server /mcp]
+    end
 
-## Event-Driven Architecture & Real-Time Sync
+    subgraph EventAndCommandFabric [Distributed Event & Command Layer]
+        CommandSvc[Command Processor & Validator]
+        OutboxPub[Transactional Outbox Publisher]
+        ResultConsumer[AMQP Result & Event Consumer]
+        RabbitMQ[RabbitMQ AMQP Broker]
+    end
 
-The CEO Dashboard uses an **Event-Driven Architecture (Observer Pattern)** combined with **Server-Sent Events (SSE)** for real-time executive updates without continuous polling:
+    subgraph Subsystems [Downstream Subsystems]
+        AdminPortal[Admin Portal Backend :8002]
+        MAPortal[M&A Portal Backend :8000]
+    end
 
-```
-                      EVENT-DRIVEN ARCHITECTURE
+    subgraph Storage [Persistence Layer]
+        PG[(PostgreSQL Database asyncpg)]
+        S3Bucket[(AWS S3 Executive Archives)]
+        CloudWatch[AWS CloudWatch Structured Telemetry]
+    end
 
- Admin Portal ────────┐
- (e.g. PR Created)    │  HTTP / Webhook / Event Bus
-                      ├── POST /api/v1/ceo/events
- M&A System ──────────┤
- (e.g. LOI Accepted)  │
-                      ↓
-              ┌─────────────────┐
-              │   CEO Backend   │ ── Immutable Audit Log (PostgreSQL)
-              └─────────────────┘
-                      │
-                      │ Real-time SSE Push
-                      │ GET /api/v1/ceo/events/stream
-                      ↓
-              ┌─────────────────┐
-              │  CEO Dashboard  │ (Zero-polling live update)
-              └─────────────────┘
-```
+    CEOWeb -->|REST & Cookie Auth| CEOGateway
+    CEOMobile -->|Bearer Token & Deep-link| CEOGateway
+    MCPAgent -->|Streamable HTTP /mcp| MCPEndpoint
+    CEOWeb -->|SSE EventSource| NotifRouter
 
-### Core Principles
+    CEOGateway --> CommandSvc
+    CommandSvc --> OutboxPub
+    OutboxPub --> RabbitMQ
+    RabbitMQ <--> Subsystems
 
-1. **State Changes via Events**: Source systems (Admin Portal, M&A System) publish events when state changes happen (`approval.created`, `approval.approved`, `m&a.loi_accepted`). The CEO Dashboard waits passively on the SSE stream rather than continuously polling downstream databases.
-2. **Polling Strictly for Health & Heartbeats**: Periodic lightweight health checks (every 30s) are used only to detect service crashes or network drops where an event cannot be published.
-3. **Browser Resilience**: The frontend maintains a single global SSE connection manager with exponential backoff (2s → 4s → 8s → 16s → 30s max) and ±20% jitter. SSE outages never block standard REST API data loading.
+    Subsystems -->|Async Event Publishing| RabbitMQ
+    RabbitMQ --> ResultConsumer
+    ResultConsumer --> PG
 
-### Event Ingestion Endpoint (For Admin & External Services)
-
-External microservices publish business events to the CEO Dashboard via:
-
-```http
-POST /api/v1/ceo/events
-Content-Type: application/json
-
-{
-  "event_type": "PURCHASE_REQUEST_CREATED",
-  "source": "admin",
-  "entity_id": "PR-10523",
-  "data": {
-    "amount": 25000.00,
-    "department": "Engineering",
-    "requester": "Jane Doe",
-    "description": "GPU Server Allocation"
-  }
-}
-```
-
-The CEO Backend ingests the event, writes an audit record to `ceo_events`, and instantly broadcasts it to all active dashboard clients via SSE (`GET /api/v1/ceo/events/stream`).
-
----
-
-## Environment Configuration
-
-Ensure `.env` in the backend root contains:
-
-```env
-# PostgreSQL Database (Supabase pooler requires DATABASE_SSL=require)
-DATABASE_URL=postgresql://postgres.upojvwtmwiigjbteqwrl:Zenatech_12345@aws-1-us-west-2.pooler.supabase.com:5432/postgres
-DATABASE_SSL=require
-
-# Server Hosting & Networking
-HOST=0.0.0.0
-PORT=8005
-MCP_HOST=0.0.0.0
-MCP_PORT=8005
-SLOW_REQUEST_MS=2000
-
-# Frontend Web Origin & CORS
-FRONTEND_URL=http://localhost:5174
-CORS_ALLOWED_ORIGINS=http://localhost:5174,http://localhost:5173,http://localhost:5175,http://localhost:3000,http://localhost:8090,http://localhost:8001,http://localhost:8005
-
-# Microservices Ecosystem
-ADMIN_PORTAL_API_URL=http://127.0.0.1:8001
-MA_PORTAL_API_URL=http://127.0.0.1:8000
-CEO_DATA_API_URL=http://127.0.0.1:8005
-
-# Microsoft Entra ID (OAuth 2.0)
-MICROSOFT_CLIENT_ID=your_client_id
-MICROSOFT_CLIENT_SECRET=your_client_secret
-MICROSOFT_TENANT_ID=your_tenant_id
-MICROSOFT_AUTHORITY=https://login.microsoftonline.com/your_tenant_id
-MICROSOFT_REDIRECT_URI=http://localhost:8005/api/auth/microsoft/callback
-
-# Security & Session Secrets
-JWT_SECRET=your_secret_key
-SESSION_SECRET=your_secret_key
+    CEOGateway --> PG
+    CEOGateway --> S3Bucket
+    CEOGateway --> CloudWatch
 ```
 
 ---
 
-## Installation
+## Technologies & System Specifications
 
-1. Clone the repository
-   ```bash
-   git clone <repo-url>
-   cd internal_portal_ceo_dashboard_backend
-   ```
+| Category | Technology | Description |
+| :--- | :--- | :--- |
+| **Framework & Engine** | [FastAPI](https://fastapi.tiangolo.com/), [Uvicorn](https://www.uvicorn.org/) | High-concurrency async ASGI engine running on port `8005` |
+| **Language** | Python 3.12+ | Asynchronous event loop with typed Pydantic v2 schemas |
+| **Database & Pooling** | [PostgreSQL 16](https://www.postgresql.org/), [asyncpg](https://github.com/MagicStack/asyncpg) | Non-blocking database pool, transactional projection tables, and read-model views |
+| **Event Architecture** | RabbitMQ (`aio-pika`), Outbox Pattern | Reliable event delivery between CEO Dashboard, Admin, and M&A portals |
+| **Real-Time Streaming**| [Server-Sent Events (SSE)](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events), MQTT (`paho-mqtt`) | Zero-latency executive KPI broadcast updates and presence tracking |
+| **Cloud Infrastructure**| AWS S3 (`boto3`), AWS CloudWatch | Executive report archiving and structured JSON log streaming |
+| **AI & MCP Protocol** | [FastMCP](https://github.com/jlowin/fastmcp), `mcp` SDK | Streamable HTTP endpoint (`/mcp`) allowing AI assistants to query high-level corporate metrics |
+| **Authentication & RBAC**| `Authlib`, `PyJWT`, `passlib`, `bcrypt` | Microsoft Entra ID OAuth 2.0 PKCE, mobile token exchange, and executive-level PBAC |
 
-2. Create and activate a virtual environment
-   ```bash
-   # Linux / WSL
-   python -m venv venv
-   source venv/bin/activate
+---
 
-   # Windows PowerShell
-   .\\venv\\Scripts\\activate
-   ```
+## Key Modules & Capabilities
 
-3. Install dependencies
-   ```bash
-   pip install -r requirements.txt
-   ```
+1. **Executive KPI Projections**:
+   - Aggregated revenue metrics, burn rates, consolidated accounts receivable, and active wire transfer volumes.
+2. **M&A Pipeline Command Processor**:
+   - High-level deal valuation summaries, milestone tracking, and approval signoffs with event-driven sync to M7A.
+3. **Admin Purchasing Integration**:
+   - Executive-level review of capital expenditure requests and wire transactions exceeding delegation limits.
+4. **Service Health & Status Registry**:
+   - Active latency checks and heartbeat telemetry for all connected internal portals.
+5. **Transactional Outbox Pattern**:
+   - Guaranteed at-least-once message delivery for executive commands across distributed systems.
 
-## Running the Development Servers
+---
 
-### 1. Backend Server (FastAPI)
+## Directory Structure
 
-**In Linux / WSL Terminal:**
+```text
+internal_portal_ceo_dashboard_backend/
+├── postgresql_db/               # asyncpg database pool & table DDL
+├── services/                    # Business service implementations
+│   ├── command_service.py       # Executive command dispatch
+│   ├── outbox_publisher.py      # Transactional outbox event engine
+│   ├── result_consumer.py       # AMQP result event consumer
+│   ├── admin_integration_service.py # Admin portal connector
+│   ├── finance_integration_service.py # Financial projection engine
+│   ├── rabbitmq_service.py      # aio-pika AMQP connection
+│   ├── service_status_registry.py # Health & latency monitoring
+│   └── logging_service.py       # Structured CloudWatch logging
+├── tools/                       # FastAPI route handlers
+│   ├── dashboard.py             # Executive KPI metrics
+│   ├── ceo_integration_router.py# M&A and Admin sync endpoints
+│   ├── approver_roles_router.py # Executive delegation endpoints
+│   ├── auth_router.py           # Microsoft SSO & mobile token exchange
+│   └── notification_router.py   # SSE event stream
+├── server.py                    # Application bootstrap & lifecycle
+├── requirements.txt
+└── run_server.sh
+```
+
+---
+
+## API Endpoints Overview
+
+| Method | Route | Description |
+| :--- | :--- | :--- |
+| `GET` | `/health/live` | Health probe for AWS ALB & uptime monitors |
+| `POST` | `/mcp` | FastMCP executive query endpoint |
+| `GET` | `/api/dashboard/stats` | Consolidated executive metrics and KPIs |
+| `GET` | `/api/service-status` | Subsystem latency and availability statuses |
+| `GET` | `/api/mergers-acquisitions/deals` | Aggregated M&A deal pipeline |
+| `POST` | `/api/purchasing/approve` | Executive command to authorize cross-portal POs |
+| `GET` | `/api/notifications/stream` | Real-time SSE event stream for executive alerts |
+
+---
+
+## Local Development & Setup
+
+### 1. Python Environment Setup
 ```bash
-cd /mnt/c/dev/ceo-dashboard/backend/internal_portal_ceo_dashboard_backend
+python3 -m venv venv
+# Windows:
+venv\Scripts\activate
+# Linux / WSL:
 source venv/bin/activate
+```
+
+### 2. Install Dependencies
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Environment Variables (.env)
+```env
+PORT=8005
+FRONTEND_URL=http://localhost:5175
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/ceo_dashboard_dev
+DATABASE_SSL=false
+SESSION_SECRET=your-32-byte-secret-key-goes-here
+RABBITMQ_URL=amqp://guest:guest@localhost:5672/
+AWS_ACCESS_KEY_ID=your-aws-access-key
+AWS_SECRET_ACCESS_KEY=your-aws-secret-key
+AWS_REGION=us-west-2
+S3_BUCKET_NAME=zenatech-ceo-archives-dev
+```
+
+### 4. Run Development Server
+```bash
 uvicorn server:app --host 0.0.0.0 --port 8005 --reload
 ```
-*Or directly without activating:*
-```bash
-./venv/bin/uvicorn server:app --host 0.0.0.0 --port 8005 --reload
-```
-
----
-
-### 2. Frontend Server (Vite React)
-
-**In Windows PowerShell:**
-```powershell
-cd C:\dev\enterprise_system\front\internal_portal_front
-npm run dev -- --host 0.0.0.0
-```
-
----
-
-### 3. Android Emulator (`Pixel_7`)
-
-#### Launch the Emulator:
-```powershell
-emulator -avd Pixel_7
-```
-*(Full path if not in PATH: `& "$env:LOCALAPPDATA\Android\Sdk\emulator\emulator.exe" -avd Pixel_7`)*
-
-#### Open Frontend Web inside Android Emulator:
-```powershell
-adb shell am start -a android.intent.action.VIEW -d "http://10.0.2.2:5174"
-```
-
----
-
-## How to Reload Services
-
-| Target | How to Reload |
-| :--- | :--- |
-| **Backend Code Changes** | Automatic via `--reload` flag in Uvicorn. |
-| **Frontend UI Changes** | Automatic via Vite Hot Module Replacement (HMR). |
-| **Android Emulator Webpage** | Run in PowerShell: `adb shell input keyevent KEYCODE_F5` (or pull down to refresh in Chrome). |
-| **Android Emulator Hard Restart** | Run `adb reboot` or kill the process and restart: `Stop-Process -Name "qemu-system-x86_64", "emulator" -Force; emulator -avd Pixel_7` |
-
----
-
-## Troubleshooting & Common Fixes
-
-### 1. Port 8005 Already in Use (`[Errno 98] Address already in use`)
-* **WSL / Linux:**
-  ```bash
-  fuser -k 8005/tcp
-  ```
-* **Windows PowerShell:**
-  ```powershell
-  Stop-Process -Id (Get-NetTCPConnection -LocalPort 8005).OwningProcess -Force
-  ```
-
-### 2. Emulator Error: `FATAL | Running multiple emulators with the same AVD`
-This occurs when an emulator instance is already running or didn't shut down cleanly:
-```powershell
-# Kill lingering emulator processes:
-Stop-Process -Name "qemu-system-x86_64", "emulator" -Force
-
-# Start emulator cleanly:
-emulator -avd Pixel_7
-```
-
-### 3. `ERR_CONNECTION_TIMED_OUT` on `192.168.1.44`
-* Use `http://localhost:5174` (or `http://10.0.2.2:5174` in Android Emulator).
-* If accessing from an external physical phone/device on Wi-Fi, ensure Vite is started with `--host 0.0.0.0` and allow the port in Windows Firewall:
-  ```powershell
-  New-NetFirewallRule -DisplayName "Vite Frontend 5174" -Direction Inbound -LocalPort 5174 -Protocol TCP -Action Allow
-  New-NetFirewallRule -DisplayName "FastAPI Backend 8005" -Direction Inbound -LocalPort 8005 -Protocol TCP -Action Allow
-  ```
-
-### 4. Supabase Database Connection Timeout
-Ensure `DATABASE_SSL=require` is present in `.env`. Supabase's transaction pooler drops non-SSL connections.
-
----
-
-## API Documentation & MCP Inspector
-
-* **Swagger UI Docs**: `http://localhost:8005/docs`
-* **ReDoc**: `http://localhost:8005/redoc`
-* **FastMCP Endpoint**: `http://localhost:8005/mcp`
-* **MCP Interactive Inspector**:
-  ```bash
-  npx @modelcontextprotocol/inspector
-  ```
-  *(Connect using Transport: `Streamable HTTP`, URL: `http://localhost:8005/mcp`)*
-
-
+Swagger UI: `http://localhost:8005/docs`.
