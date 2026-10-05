@@ -381,6 +381,13 @@ jobs:
             --group-id ${{ env.AWS_SECURITY_GROUP_ID }} \
             --protocol tcp --port 22 --cidr ${{ steps.ip.outputs.ipv4 }}/32 || true
 
+      - name: Debug EC2 connectivity
+        run: |
+          echo "EC2_HOST=$EC2_HOST"
+          echo "EC2_USER=$EC2_USER"
+          ping -c 3 "$EC2_HOST" || true
+          nc -zv "$EC2_HOST" 22 || true
+
       - name: Deploy backend to EC2
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
