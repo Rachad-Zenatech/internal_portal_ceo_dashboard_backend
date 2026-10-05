@@ -579,6 +579,14 @@ jobs:
               fi
             fi
 
+            # Each deploy leaves the previous image dangling plus build cache; prune
+            # before building so the disk does not fill up and fail the image export.
+            echo 'Disk before cleanup:'; df -h /
+            sudo docker container prune -f || true
+            sudo docker image prune -f || true
+            sudo docker builder prune -f --filter until=24h || true
+            echo 'Disk after cleanup:'; df -h /
+
             sudo docker build -t ceo-backend-api:latest .
             if docker compose version &>/dev/null; then
               sudo docker compose -f docker-compose.prod.yml up -d --remove-orphans
@@ -589,6 +597,10 @@ jobs:
               sudo chmod +x /usr/local/bin/docker-compose
               sudo /usr/local/bin/docker-compose -f docker-compose.prod.yml up -d --remove-orphans
             fi
+
+            # Remove the image this deploy just replaced.
+            sudo docker image prune -f || true
+            echo 'Disk after deploy:'; df -h /
           "
           rm -f ec2-key.pem .env.production
 
