@@ -66,6 +66,16 @@ class OutboxPublisher:
                     logger.debug("Outbox publisher: DB pool is closed, waiting...")
                     await asyncio.sleep(2.0)
                     continue
+                if "does not exist" in str(exc).lower() and "service_outbox" in str(exc).lower():
+                    logger.warning("Outbox publisher: 'service_outbox' table missing, running schema bootstrap...")
+                    try:
+                        from postgresql_db.cross_service_schema import ensure_cross_service_schema
+                        await ensure_cross_service_schema()
+                        logger.info("Outbox publisher: Successfully recreated missing schema tables.")
+                    except Exception as schema_err:
+                        logger.error(f"Outbox publisher: Schema auto-recovery failed: {schema_err}")
+                    await asyncio.sleep(5.0)
+                    continue
                 logger.error(f"Outbox publisher loop error: {exc}", exc_info=True)
                 await asyncio.sleep(2.0)
 

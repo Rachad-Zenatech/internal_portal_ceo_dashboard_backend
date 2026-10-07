@@ -1,0 +1,61 @@
+name: Branch & PR Schema Verification
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches-ignore:
+      - main
+  workflow_dispatch:
+
+jobs:
+  verify-migrations-and-diffs:
+    name: Verify Migrations & Schema Diffs
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: zenatech_ceo_dashboard
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install asyncpg psycopg2-binary alembic
+
+      - name: Test Apply All Migrations on Clean DB
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/zenatech_ceo_dashboard
+          DATABASE_SSL: false
+        run: |
+          echo "[*] Testing Alembic migrations against fresh test database..."
+          alembic upgrade head
+
+      - name: Check for Unmigrated Schema Differences (Alembic Diff Check)
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/zenatech_ceo_dashboard
+          DATABASE_SSL: false
+        run: |
+          echo "[*] Checking for schema differences between code models and migrations..."
+          alembic check

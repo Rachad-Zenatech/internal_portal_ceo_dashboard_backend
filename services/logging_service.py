@@ -59,9 +59,10 @@ class JsonFormatter(logging.Formatter):
             value = getattr(record, field, None)
             if value is not None:
                 payload[field] = value
-        if record.exc_info:
+        if record.exc_info and any(record.exc_info):
             payload["exception"] = self.formatException(record.exc_info)
-            payload["error_type"] = record.exc_info[0].__name__
+            if record.exc_info[0] is not None:
+                payload["error_type"] = getattr(record.exc_info[0], "__name__", str(record.exc_info[0]))
         return json.dumps(payload, ensure_ascii=False, default=str, separators=(",", ":"))
 
 
