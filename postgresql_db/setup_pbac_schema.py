@@ -16,6 +16,64 @@ async def setup():
     try:
         print("Creating tables...")
         await conn.execute("""
+            CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+            CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+            CREATE TABLE IF NOT EXISTS users (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                email VARCHAR(255) UNIQUE NOT NULL,
+                full_name VARCHAR(255),
+                initials VARCHAR(50),
+                password_hash VARCHAR(255),
+                is_active BOOLEAN DEFAULT true,
+                is_super_admin BOOLEAN DEFAULT false,
+                auth_provider VARCHAR(50) DEFAULT 'microsoft',
+                sso_enabled BOOLEAN DEFAULT true,
+                force_password_change BOOLEAN DEFAULT false,
+                created_by UUID,
+                updated_by UUID,
+                last_login_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ DEFAULT now(),
+                updated_at TIMESTAMPTZ DEFAULT now(),
+                deleted_at TIMESTAMPTZ
+            );
+
+            CREATE TABLE IF NOT EXISTS roles (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                code VARCHAR(255) UNIQUE NOT NULL,
+                name VARCHAR(255) NOT NULL,
+                description TEXT,
+                is_system_role BOOLEAN DEFAULT false,
+                parent_role_id UUID REFERENCES roles(id),
+                is_active BOOLEAN DEFAULT true,
+                created_at TIMESTAMPTZ DEFAULT now(),
+                updated_at TIMESTAMPTZ DEFAULT now(),
+                deleted_at TIMESTAMPTZ
+            );
+
+            CREATE TABLE IF NOT EXISTS user_roles (
+                id SERIAL PRIMARY KEY,
+                user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+                role_id UUID REFERENCES roles(id) ON DELETE CASCADE,
+                assigned_at TIMESTAMPTZ DEFAULT now(),
+                assigned_by UUID,
+                is_active BOOLEAN DEFAULT true,
+                UNIQUE(user_id, role_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS audit_logs (
+                id SERIAL PRIMARY KEY,
+                actor_user_id UUID,
+                action VARCHAR(255) NOT NULL,
+                entity_type VARCHAR(255) NOT NULL,
+                entity_id VARCHAR(255),
+                old_value JSONB,
+                new_value JSONB,
+                ip_address VARCHAR(255),
+                user_agent TEXT,
+                created_at TIMESTAMPTZ DEFAULT now()
+            );
+
             CREATE TABLE IF NOT EXISTS permission_modules (
                 id SERIAL PRIMARY KEY,
                 code VARCHAR(255) UNIQUE NOT NULL,

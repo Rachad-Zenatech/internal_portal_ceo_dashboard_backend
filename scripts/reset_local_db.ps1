@@ -67,13 +67,15 @@ if ($retries -eq 0) {
     exit 1
 }
 
-Write-Host "?? [Disposable DB] Running Alembic migrations to branch HEAD..." -ForegroundColor Green
-if (Get-Command alembic -ErrorAction SilentlyContinue) {
-    alembic upgrade head
-} elseif (Test-Path "venv\Scripts\alembic.exe") {
-    & "venv\Scripts\alembic.exe" upgrade head
-} else {
-    try { python -m alembic upgrade head 2>&1 | Out-Null } catch {}
+Write-Host "?? [Disposable DB] Applying database schemas & master data..." -ForegroundColor Cyan
+if (Test-Path "venv\Scripts\python.exe") {
+    & "venv\Scripts\python.exe" -m postgresql_db.setup_pbac_schema
+    & "venv\Scripts\python.exe" -m postgresql_db.cross_service_schema
+    & "venv\Scripts\python.exe" -m postgresql_db.notifications_schema
+} elseif (Get-Command python -ErrorAction SilentlyContinue) {
+    python -m postgresql_db.setup_pbac_schema
+    python -m postgresql_db.cross_service_schema
+    python -m postgresql_db.notifications_schema
 }
 
-Write-Host "? [Disposable DB] Local database successfully recreated and ready!" -ForegroundColor Green
+Write-Host "? [Disposable DB] Local database successfully recreated and schemas applied!" -ForegroundColor Green

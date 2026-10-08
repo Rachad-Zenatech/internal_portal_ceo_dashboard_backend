@@ -339,3 +339,7 @@ async def ensure_cross_service_schema():
         logger.error(f"Failed ensuring cross-service schema: {exc}", exc_info=True)
         raise
 
+
+
+if __name__ == "__main__":
+    asyncio.run(ensure_cross_service_schema())

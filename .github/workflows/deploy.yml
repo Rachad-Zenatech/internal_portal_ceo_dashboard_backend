@@ -143,8 +143,8 @@ jobs:
   migrate-db:
     name: Migrate & Verify Database
     environment: Zenatech
-    needs: [lint-and-test, docker-build, check-environment]
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    needs: [lint-and-test, docker-build]
+    if: always() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -353,8 +353,8 @@ jobs:
   deploy-ec2:
     name: Deploy to EC2
     environment: Zenatech
-    needs: [docker-build, check-environment, migrate-db]
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    needs: [lint-and-test, docker-build, migrate-db]
+    if: always() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-latest
     env:
       AWS_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY || secrets.AWS_ACCESS_KEY_ID || secrets.ACCESS_KEY }}

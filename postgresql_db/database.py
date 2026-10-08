@@ -14,12 +14,15 @@ _admin_pool: asyncpg.Pool | None = None
 logger = logging.getLogger(__name__)
 
 def _resolve_ssl_mode() -> str | None:
-    ssl_env = os.getenv("DATABASE_SSL", "require").strip().lower()
-    if ssl_env in ("disable", "false", "0", "none", "no"):
+    ssl_env = os.getenv("DATABASE_SSL", "").strip().lower()
+    if ssl_env in ("disable", "false", "0", "none", "no", "off"):
         return None
-    if ssl_env in ("true", "require", "1"):
+    if ssl_env in ("true", "require", "1", "yes"):
         return "require"
-    return ssl_env
+    dsn = os.getenv("DATABASE_URL", "")
+    if any(h in dsn for h in ("localhost", "127.0.0.1", "host.docker.internal")):
+        return None
+    return "require"
 
 
 async def create_pool():
