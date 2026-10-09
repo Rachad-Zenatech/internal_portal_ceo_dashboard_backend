@@ -37,6 +37,12 @@ if (Test-Path ".env") {
         $dbUrl = $envMatch.Matches[0].Groups[1].Value.Trim("`"'")
     }
 }
+if (Test-Path ".env.local") {
+    $envLocalMatch = Select-String -Path ".env.local" -Pattern "^DATABASE_URL=(.*)"
+    if ($envLocalMatch) {
+        $dbUrl = $envLocalMatch.Matches[0].Groups[1].Value.Trim("`"'")
+    }
+}
 if ($env:DATABASE_URL) {
     $dbUrl = $env:DATABASE_URL
 }
