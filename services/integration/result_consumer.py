@@ -161,7 +161,7 @@ class ResultConsumer:
 
         # 4. Notify Browser via Realtime SSE Stream with affected React Query Keys
         try:
-            from tools.ceo_integration_router import broadcast_event
+            from tools.integration.ceo_integration_router import broadcast_event
 
             sse_payload = {
                 "type": "service_command.updated",

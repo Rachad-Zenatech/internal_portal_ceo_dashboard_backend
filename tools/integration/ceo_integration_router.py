@@ -287,7 +287,7 @@ async def execute_approval_action(
 
             # Broadcast event to connected WebSocket clients for instant UI refresh
             try:
-                from tools.service_status_router import ws_manager
+                from tools.integration.service_status_router import ws_manager
                 ws_msg = {
                     "eventType": f"PURCHASE_REQUEST_{action_type}D",
                     "service": "admin",
@@ -407,7 +407,7 @@ async def execute_bulk_approval_action(
 
             # Broadcast WebSocket events for all items
             try:
-                from tools.service_status_router import ws_manager
+                from tools.integration.service_status_router import ws_manager
                 for req_id in request_ids:
                     ws_msg = {
                         "eventType": f"PURCHASE_REQUEST_{action_type}D",
@@ -583,7 +583,7 @@ async def publish_event(payload: CeoEventPayload):
             "data": payload.data,
         }
         try:
-            from tools.service_status_router import ws_manager
+            from tools.integration.service_status_router import ws_manager
             asyncio.create_task(ws_manager.broadcast(ws_msg))
             create_background_task(ws_manager.broadcast(ws_msg), name="ws-broadcast-ceo-event")
         except Exception as ws_err:

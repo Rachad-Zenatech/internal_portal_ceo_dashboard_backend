@@ -1,4 +1,4 @@
-from tools.upload_files import router as upload_files_router
+from tools.uploads.upload_files import router as upload_files_router
 # server.py - CEO Executive Dashboard Backend Server
 import asyncio
 import json
@@ -34,19 +34,19 @@ configure_logging()
 logger = logging.getLogger(__name__)
 
 # FastAPI routers (HTTP request routes)
-from tools.search import router as search_router
-from tools.rbac_router import router as rbac_router
-from tools.auth_router import router as auth_router
-from tools.notification_router import notification_router
-from tools.notification_ws_router import notification_ws_router
-from tools.observability import router as observability_router
-from tools.dashboard import router as dashboard_router
-from tools.ceo_integration_router import router as ceo_integration_router
-from tools.approver_roles_router import router as approver_roles_router, ensure_approver_roles
-from tools.graph_router import router as graph_router
-from tools.workflow_assignment_router import router as workflow_assignment_router
-from tools.service_status_router import router as service_status_router
-from tools.finance_integration_router import router as finance_integration_router
+from tools.shared.search import router as search_router
+from tools.shared.rbac_router import router as rbac_router
+from tools.shared.auth_router import router as auth_router
+from tools.notifications.notification_router import notification_router
+from tools.notifications.notification_ws_router import notification_ws_router
+from tools.shared.observability import router as observability_router
+from tools.dashboard.dashboard import router as dashboard_router
+from tools.integration.ceo_integration_router import router as ceo_integration_router
+from tools.integration.approver_roles_router import router as approver_roles_router, ensure_approver_roles
+from tools.microsoft_graph.graph_router import router as graph_router
+from tools.integration.workflow_assignment_router import router as workflow_assignment_router
+from tools.integration.service_status_router import router as service_status_router
+from tools.integration.finance_integration_router import router as finance_integration_router
 
 # MCP tools
 from mcp_tools import register_all as register_mcp_tools, sync_mcp_tools_to_vector_db, ask_gemini_stream
@@ -184,7 +184,7 @@ from services.shared.auth_service import (
     current_user_id_ctx,
     get_current_user_id_dependency,
 )
-from tools.rbac_router import get_current_user_id
+from tools.shared.rbac_router import get_current_user_id
 
 # The whole conversation sent to Gemini in one request, so one request can't use a huge share of the quota.
 CHAT_MAX_TOTAL_CHARS = 60_000

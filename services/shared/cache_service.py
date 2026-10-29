@@ -87,7 +87,7 @@ async def emit_cache_invalidation(
 
     # 4. Broadcast invalidation event over WebSocket to frontend
     try:
-        from tools.service_status_router import ws_manager
+        from tools.integration.service_status_router import ws_manager
         ws_event = {
             "eventType": "cache.invalidated",
             "scope": scope,
