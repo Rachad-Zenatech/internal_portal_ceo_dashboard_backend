@@ -1,7 +1,7 @@
 import json
 from uuid import UUID
 from postgresql_db.database import get_pool, fetch_all, fetch_one
-from models.rbac_model import (
+from models.shared.rbac_model import (
     UserCreate, UserUpdate, RoleCreate, RoleUpdate,
     RoleNavigationPermissionCreate, RoleMcpToolPermissionCreate
 )

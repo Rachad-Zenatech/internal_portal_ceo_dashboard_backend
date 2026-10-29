@@ -26,16 +26,16 @@ from fastmcp.prompts import Prompt
 
 
 from mcp_tools.prompts import ALL_PROMPTS
-from mcp_tools.dashboard import (
+from mcp_tools.dashboard.dashboard import (
     get_summary_metrics_tool,
     get_revenue_vs_expenses_tool,
     get_recent_transactions_tool,
     get_bank_account_balances_tool,
     get_account_distribution_tool
 )
-from mcp_tools.audit import get_audit_logs_tool, get_login_activity_logs_tool
-from mcp_tools.permissions import list_my_accessible_tools_tool
-from mcp_tools.upload_files import list_uploaded_files_tool, get_uploaded_file_tool
+from mcp_tools.shared.audit import get_audit_logs_tool, get_login_activity_logs_tool
+from mcp_tools.shared.permissions import list_my_accessible_tools_tool
+from mcp_tools.uploads.upload_files import list_uploaded_files_tool, get_uploaded_file_tool
 
 from services.shared.auth_service import current_user_id_ctx, user_can_use_mcp_tool, get_my_permissions
 from services.ai.ai_guardrails import redact_pii

@@ -90,10 +90,10 @@ async def lifespan(app: FastAPI):
             ''')
         await ensure_approver_roles()
 
-        from postgresql_db.cross_service_schema import ensure_cross_service_schema
+        from postgresql_db.schemas.cross_service_schema import ensure_cross_service_schema
         await ensure_cross_service_schema()
         try:
-            from postgresql_db.setup_ai_observability_schema import setup as setup_ai_observability_schema
+            from postgresql_db.schemas.setup_ai_observability_schema import setup as setup_ai_observability_schema
             await setup_ai_observability_schema()
         except Exception as ai_err:
             logger.warning(f"AI observability schema setup note: {ai_err}")

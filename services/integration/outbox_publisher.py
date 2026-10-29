@@ -69,7 +69,7 @@ class OutboxPublisher:
                 if "does not exist" in str(exc).lower() and "service_outbox" in str(exc).lower():
                     logger.warning("Outbox publisher: 'service_outbox' table missing, running schema bootstrap...")
                     try:
-                        from postgresql_db.cross_service_schema import ensure_cross_service_schema
+                        from postgresql_db.schemas.cross_service_schema import ensure_cross_service_schema
                         await ensure_cross_service_schema()
                         logger.info("Outbox publisher: Successfully recreated missing schema tables.")
                     except Exception as schema_err:

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from typing import List, Dict
 from uuid import UUID
-from models.notification_model import NotificationResponse, NotificationCreate
+from models.notifications.notification_model import NotificationResponse, NotificationCreate
 from services.notifications.notification_service import (
     get_recent_notifications, get_unread_count, mark_notification_as_read, 
     mark_all_notifications_as_read, clear_read_notifications, clear_all_notifications, create_notification
