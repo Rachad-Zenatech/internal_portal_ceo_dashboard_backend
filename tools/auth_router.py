@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, EmailStr
 from authlib.integrations.starlette_client import OAuth
 from starlette.config import Config
-from services.auth_service import (
+from services.shared.auth_service import (
     create_access_token, 
     getCurrentUserFromMicrosoftClaims, 
     upsertMicrosoftUser,
@@ -19,7 +19,7 @@ from services.auth_service import (
     AUTH_COOKIE_NAME,
 )
 from tools.rbac_router import get_current_user_id
-from services.rbac_service import log_login_activity
+from services.shared.rbac_service import log_login_activity
 from postgresql_db.database import get_pool, fetch_one, fetch_all
 from uuid import UUID
 
@@ -228,7 +228,7 @@ async def logout(request: Request):
 
     if token:
         import jwt
-        from services.auth_service import JWT_SECRET, JWT_ALGORITHM, JWT_ISSUER
+        from services.shared.auth_service import JWT_SECRET, JWT_ALGORITHM, JWT_ISSUER
         try:
             payload = jwt.decode(
                 token,

@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from services.s3_storage_service import (
+from services.uploads.s3_storage_service import (
     delete_file_from_s3,
     download_file_from_s3,
     upload_file_to_s3,

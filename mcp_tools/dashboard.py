@@ -12,7 +12,7 @@ async def get_summary_metrics_tool(company_id: int = None) -> str:
              and their percentage changes.
     """
     try:
-        from services.dashboard_service import get_summary_metrics
+        from services.dashboard.dashboard_service import get_summary_metrics
         res = await get_summary_metrics(company_id=company_id)
         return json.dumps(res, indent=2)
     except Exception as e:
@@ -30,7 +30,7 @@ async def get_revenue_vs_expenses_tool(period: str = "monthly", company_id: int 
         str: JSON string containing a list of objects with 'month', 'revenue', and 'expenses' fields.
     """
     try:
-        from services.dashboard_service import get_revenue_vs_expenses
+        from services.dashboard.dashboard_service import get_revenue_vs_expenses
         res = await get_revenue_vs_expenses(period=period, company_id=company_id)
         return json.dumps(res, indent=2)
     except Exception as e:
@@ -47,7 +47,7 @@ async def get_recent_transactions_tool(company_id: int = None) -> str:
         str: JSON string containing the 10 most recent transactions.
     """
     try:
-        from services.dashboard_service import get_recent_transactions
+        from services.dashboard.dashboard_service import get_recent_transactions
         res = await get_recent_transactions(company_id=company_id)
         return json.dumps(res, indent=2)
     except Exception as e:
@@ -66,7 +66,7 @@ async def get_bank_account_balances_tool(company_id: int = None, start_date: str
         str: JSON string containing a list of bank account balances.
     """
     try:
-        from services.dashboard_service import get_bank_account_balances
+        from services.dashboard.dashboard_service import get_bank_account_balances
         res = await get_bank_account_balances(company_id, start_date, end_date)
         return json.dumps(res, indent=2)
     except Exception as e:
@@ -85,7 +85,7 @@ async def get_account_distribution_tool(company_id: int = None, start_date: str 
         str: JSON string containing a list of account distribution data points.
     """
     try:
-        from services.dashboard_service import get_account_type_distribution
+        from services.dashboard.dashboard_service import get_account_type_distribution
         res = await get_account_type_distribution(company_id, start_date, end_date)
         return json.dumps(res, indent=2)
     except Exception as e:

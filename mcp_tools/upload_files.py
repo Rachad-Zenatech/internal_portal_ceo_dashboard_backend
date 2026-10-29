@@ -11,7 +11,7 @@ async def list_uploaded_files_tool(upload_type: str = None) -> str:
         str: JSON string containing a list of uploaded files.
     """
     try:
-        from services.upload_archive_service import list_uploads
+        from services.uploads.upload_archive_service import list_uploads
         res = list_uploads(upload_type=upload_type)
         return json.dumps(res, indent=2)
     except Exception as e:
@@ -28,7 +28,7 @@ async def get_uploaded_file_tool(file_id: str) -> str:
         str: JSON string containing the file metadata.
     """
     try:
-        from services.upload_archive_service import get_upload
+        from services.uploads.upload_archive_service import get_upload
         res = get_upload(file_id)
         return json.dumps(res, indent=2)
     except Exception as e:

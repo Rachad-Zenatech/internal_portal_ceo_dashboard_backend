@@ -356,7 +356,7 @@ def requireNavigationAccess(navigationCode: str, actionCode: str = 'VIEW'):
         
         has_access = await user_can_access_page(user_id, navigationCode, actionCode)
         if not has_access:
-            from services.rbac_service import log_audit_action
+            from services.shared.rbac_service import log_audit_action
             await log_audit_action('PERMISSION_DENIED', user_id, f'Denied {actionCode} on {navigationCode}')
             raise HTTPException(status_code=403, detail='Permission denied')
         return user_id
@@ -397,7 +397,7 @@ def require_permission(permission_code: str):
             
         has_access = await user_can_access_page(user_id, navigationCode, db_action_code)
         if not has_access:
-            from services.rbac_service import log_audit_action
+            from services.shared.rbac_service import log_audit_action
             await log_audit_action('PERMISSION_DENIED', user_id, f'Denied {permission_code}')
             raise HTTPException(status_code=403, detail='Permission denied')
         return user_id
@@ -412,7 +412,7 @@ def requireToolAccess(toolCode: str, requiredAccessLevel: str = 'execute'):
             
         has_access = await user_can_use_mcp_tool(user_id, toolCode)
         if not has_access:
-            from services.rbac_service import log_audit_action
+            from services.shared.rbac_service import log_audit_action
             await log_audit_action('PERMISSION_DENIED', user_id, f'Denied tool access on {toolCode}')
             raise HTTPException(status_code=403, detail='Permission denied')
         return user_id

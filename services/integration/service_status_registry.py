@@ -101,7 +101,7 @@ class ServiceStatusRegistry:
         if st is not None:
             return st
         try:
-            from services.integration_resilience import admin_circuit_breaker, ma_circuit_breaker
+            from services.integration.integration_resilience import admin_circuit_breaker, ma_circuit_breaker
             if normalized == "admin":
                 if admin_circuit_breaker.state == "OPEN":
                     return "offline"
@@ -125,7 +125,7 @@ class ServiceStatusRegistry:
         if st == "online":
             return True
         try:
-            from services.integration_resilience import admin_circuit_breaker, ma_circuit_breaker
+            from services.integration.integration_resilience import admin_circuit_breaker, ma_circuit_breaker
             if normalized == "admin":
                 return admin_circuit_breaker.allow_request()
             if normalized == "ma":

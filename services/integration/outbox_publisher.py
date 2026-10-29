@@ -11,7 +11,7 @@ import random
 from typing import Optional
 from datetime import datetime, timezone
 from postgresql_db.database import get_pool
-from services.rabbitmq_service import rabbitmq_manager
+from services.notifications.rabbitmq_service import rabbitmq_manager
 
 logger = logging.getLogger(__name__)
 

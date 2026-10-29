@@ -23,7 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from postgresql_db.database import close_pool, create_pool, fetch_one, get_pool, create_admin_pool, close_admin_pool
-from services.logging_service import (
+from services.shared.logging_service import (
     asyncio_exception_handler,
     configure_logging,
     log_background_task_result,
@@ -50,8 +50,8 @@ from tools.finance_integration_router import router as finance_integration_route
 
 # MCP tools
 from mcp_tools import register_all as register_mcp_tools, sync_mcp_tools_to_vector_db, ask_gemini_stream
-from services import ai_observability, ai_usage_service
-from services.ai_guardrails import screen_input
+from services.ai import ai_observability, ai_usage_service
+from services.ai.ai_guardrails import screen_input
 
 
 # FastAPI, MCP tools, and the lightweight worker share one DB pool in this process.
@@ -99,7 +99,7 @@ async def lifespan(app: FastAPI):
             logger.warning(f"AI observability schema setup note: {ai_err}")
 
         # Initialize Connectors package
-        import services.connectors
+        import services.integration.connectors
     except Exception:
         logger.exception("Application startup failed", extra={"event": "application_startup_failed"})
         raise
@@ -114,9 +114,9 @@ async def lifespan(app: FastAPI):
         partial(log_background_task_result, task_name="ai-trace-writer")
     )
     # Initialize Event-Driven MQTT Engine, Presence & Status Registry
-    from services.embedded_broker import ensure_mqtt_broker_running, stop_embedded_mqtt_broker
-    from services.mqtt_presence import MqttServicePresence
-    from services.service_status_registry import service_status_registry
+    from services.notifications.embedded_broker import ensure_mqtt_broker_running, stop_embedded_mqtt_broker
+    from services.notifications.mqtt_presence import MqttServicePresence
+    from services.integration.service_status_registry import service_status_registry
 
     await ensure_mqtt_broker_running()
 
@@ -128,11 +128,11 @@ async def lifespan(app: FastAPI):
     await service_status_registry.start()
 
     # Initialize Asynchronous Cross-Service Messaging & Workers
-    from services.rabbitmq_service import rabbitmq_manager
-    from services.outbox_publisher import outbox_publisher
-    from services.result_consumer import result_consumer
-    from services.admin_command_processor import admin_command_processor
-    from services.ma_command_processor import ma_command_processor
+    from services.notifications.rabbitmq_service import rabbitmq_manager
+    from services.integration.outbox_publisher import outbox_publisher
+    from services.integration.result_consumer import result_consumer
+    from services.integration.admin_command_processor import admin_command_processor
+    from services.integration.ma_command_processor import ma_command_processor
 
     await rabbitmq_manager.connect()
     outbox_publisher.start()
@@ -180,7 +180,7 @@ app = FastAPI(
 )
 
 
-from services.auth_service import (
+from services.shared.auth_service import (
     current_user_id_ctx,
     get_current_user_id_dependency,
 )
@@ -302,8 +302,8 @@ app.add_middleware(
 @app.get("/api/integration/status")
 @app.get("/api/integration-status")
 async def api_ceo_integration_status():
-    from services.service_status_registry import service_status_registry
-    from services.integration_resilience import admin_circuit_breaker, ma_circuit_breaker
+    from services.integration.service_status_registry import service_status_registry
+    from services.integration.integration_resilience import admin_circuit_breaker, ma_circuit_breaker
     import httpx
 
     # 1. Admin Service status

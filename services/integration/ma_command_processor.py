@@ -9,12 +9,12 @@ import logging
 from typing import Any, Dict
 from datetime import datetime, timezone
 
-from services.connectors.base_connector import (
+from services.integration.connectors.base_connector import (
     CommandEnvelope,
     CommandResultEnvelope,
     FailureInfo,
 )
-from services.rabbitmq_service import rabbitmq_manager, EVENTS_EXCHANGE_NAME
+from services.notifications.rabbitmq_service import rabbitmq_manager, EVENTS_EXCHANGE_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ class MACommandProcessor:
             logger.debug(f"Note updating command processing status: {st_err}")
 
         # Wait until M&A service is online before executing remote domain action
-        from services.service_status_registry import service_status_registry
+        from services.integration.service_status_registry import service_status_registry
         is_online = await service_status_registry.wait_until_online("ma", timeout=600.0)
         if not is_online:
             logger.warning(f"M&A service did not come online within timeout for command {cmd_id}")

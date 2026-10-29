@@ -31,8 +31,8 @@ from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Tuple
 from uuid import UUID
 
 from postgresql_db.database import get_pool
-from services.ai_guardrails import GuardResult, redact_pii
-from services.logging_service import request_id_ctx
+from services.ai.ai_guardrails import GuardResult, redact_pii
+from services.shared.logging_service import request_id_ctx
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +110,7 @@ def within(parent: Optional[Span]) -> Iterator[None]:
 
 
 def _user_id() -> Optional[UUID]:
-    from services.auth_service import current_user_id_ctx
+    from services.shared.auth_service import current_user_id_ctx
     value = current_user_id_ctx.get()
     try:
         return value if isinstance(value, UUID) or value is None else UUID(str(value))

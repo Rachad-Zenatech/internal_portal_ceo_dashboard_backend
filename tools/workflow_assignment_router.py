@@ -8,9 +8,9 @@ from pydantic import BaseModel
 import httpx
 
 from postgresql_db.database import get_pool
-from services.auth_service import get_current_user_id_dependency
-from services.admin_integration_service import _generate_service_token
-from services.integration_resilience import admin_circuit_breaker
+from services.shared.auth_service import get_current_user_id_dependency
+from services.integration.admin_integration_service import _generate_service_token
+from services.integration.integration_resilience import admin_circuit_breaker
 
 logger = logging.getLogger(__name__)
 
@@ -341,8 +341,8 @@ async def create_assignment(
     payload: WorkflowAssignmentInput,
     user_id: Optional[UUID] = Depends(get_current_user_id_dependency),
 ):
-    from services.command_service import command_service
-    from services.connectors.base_connector import UserContext
+    from services.integration.command_service import command_service
+    from services.integration.connectors.base_connector import UserContext
     from postgresql_db.database import get_pool
 
     sanitized = _sanitize_payload_for_admin(payload)
@@ -405,8 +405,8 @@ async def update_assignment(
     payload: WorkflowAssignmentInput,
     user_id: Optional[UUID] = Depends(get_current_user_id_dependency),
 ):
-    from services.command_service import command_service
-    from services.connectors.base_connector import UserContext
+    from services.integration.command_service import command_service
+    from services.integration.connectors.base_connector import UserContext
     from postgresql_db.database import get_pool
 
     sanitized = _sanitize_payload_for_admin(payload)

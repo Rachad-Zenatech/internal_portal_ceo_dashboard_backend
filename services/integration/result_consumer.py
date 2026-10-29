@@ -12,12 +12,12 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from postgresql_db.database import get_pool
-from services.connectors.connector_registry import connector_registry
-from services.connectors.base_connector import (
+from services.integration.connectors.connector_registry import connector_registry
+from services.integration.connectors.base_connector import (
     CommandResultEnvelope,
     ProjectionEventEnvelope,
 )
-from services.rabbitmq_service import rabbitmq_manager
+from services.notifications.rabbitmq_service import rabbitmq_manager
 
 logger = logging.getLogger(__name__)
 

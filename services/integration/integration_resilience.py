@@ -172,7 +172,7 @@ async def execute_resilient_call(
     cached_data, cached_updated_at = resilient_cache.get(cache_key)
 
     # 1. Event-Driven Service Status Check via Registry
-    from services.service_status_registry import service_status_registry, normalize_service_name
+    from services.integration.service_status_registry import service_status_registry, normalize_service_name
     svc_key = normalize_service_name(circuit.name.replace("Portal", "").replace("System", ""))
     is_online = service_status_registry.is_service_online(svc_key)
 

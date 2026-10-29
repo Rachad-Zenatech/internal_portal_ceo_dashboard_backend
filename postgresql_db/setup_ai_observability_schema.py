@@ -1,7 +1,7 @@
 """AI observability, caching and usage limits: trace spans for every AI step (model calls, embeddings, tool calls,
 guard checks, cache lookups), the prompt log of every model call, the semantic cache of assistant answers and the
-AI usage events the daily limits count. See services/ai_observability.py, services/semantic_cache.py and
-services/ai_usage_service.py."""
+AI usage events the daily limits count. See services/ai/ai_observability.py, services/semantic_cache.py and
+services/ai/ai_usage_service.py."""
 
 import logging
 

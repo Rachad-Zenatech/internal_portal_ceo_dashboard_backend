@@ -2,8 +2,8 @@ from fastapi import APIRouter, Cookie, Depends, HTTPException, Header
 from typing import Optional
 from uuid import UUID
 
-from services.rbac_service import get_login_activity_logs
-from services.auth_service import (
+from services.shared.rbac_service import get_login_activity_logs
+from services.shared.auth_service import (
     AUTH_COOKIE_NAME,
     get_current_user_id_dependency,
     get_my_permissions,
@@ -44,7 +44,7 @@ async def read_my_permissions(user_id: UUID = Depends(get_current_user_id)):
 # --- AUDIT LOGS ---
 @router.get("/audit-logs")
 async def list_audit_logs(user_id: UUID = Depends(require_permission("AUDIT_LOG_READ"))):
-    from services.rbac_service import get_audit_logs
+    from services.shared.rbac_service import get_audit_logs
     return await get_audit_logs()
 
 @router.get("/login-activities")

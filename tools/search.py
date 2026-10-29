@@ -3,7 +3,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 from postgresql_db.database import fetch_all
 from uuid import UUID
-from services.auth_service import get_current_user_id_dependency, user_can_access_page
+from services.shared.auth_service import get_current_user_id_dependency, user_can_access_page
 
 router = APIRouter()
 

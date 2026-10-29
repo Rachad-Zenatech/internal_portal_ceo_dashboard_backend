@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Request, status
 from pydantic import BaseModel, Field
 
-from services.auth_service import get_current_user_id_dependency
+from services.shared.auth_service import get_current_user_id_dependency
 
 
 router = APIRouter()

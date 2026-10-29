@@ -11,7 +11,7 @@ async def get_audit_logs_tool(limit: int = 50) -> str:
         str: JSON string containing audit log entries.
     """
     try:
-        from services.rbac_service import get_audit_logs
+        from services.shared.rbac_service import get_audit_logs
         res = await get_audit_logs()
         # Truncate to limit to prevent blowing up the LLM context window
         return json.dumps(res[:limit], indent=2, default=str)
@@ -29,7 +29,7 @@ async def get_login_activity_logs_tool(limit: int = 50) -> str:
         str: JSON string containing login activity entries.
     """
     try:
-        from services.rbac_service import get_login_activity_logs
+        from services.shared.rbac_service import get_login_activity_logs
         res = await get_login_activity_logs()
         return json.dumps(res[:limit], indent=2, default=str)
     except Exception as e:

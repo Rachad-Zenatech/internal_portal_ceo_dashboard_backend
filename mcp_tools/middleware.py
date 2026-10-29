@@ -15,14 +15,14 @@ from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_http_request
 from fastmcp.server.middleware import Middleware, MiddlewareContext
 
-from services.ai_guardrails import redact_pii
-from services.ai_observability import span
+from services.ai.ai_guardrails import redact_pii
+from services.ai.ai_observability import span
 
 logger = logging.getLogger(__name__)
 
 
 async def _signed_in_user() -> Optional[UUID]:
-    from services.auth_service import AUTH_COOKIE_NAME, get_current_user_id_dependency
+    from services.shared.auth_service import AUTH_COOKIE_NAME, get_current_user_id_dependency
 
     try:
         request = get_http_request()
@@ -53,7 +53,7 @@ class McpAccessMiddleware(Middleware):
 
     async def on_call_tool(self, context: MiddlewareContext, call_next):
         from mcp_tools import tool_code
-        from services.auth_service import current_user_id_ctx, user_can_use_mcp_tool
+        from services.shared.auth_service import current_user_id_ctx, user_can_use_mcp_tool
 
         name = context.message.name
         user_id = await _signed_in_user()

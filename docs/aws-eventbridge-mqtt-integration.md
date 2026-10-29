@@ -123,7 +123,7 @@ def publish_to_eventbridge(source: str, detail_type: str, detail_data: dict) -> 
 ```
 
 ### 2. Connect to Service Status Registry
-In `services/service_status_registry.py`, forward state changes:
+In `services/integration/service_status_registry.py`, forward state changes:
 
 ```python
 # When a service status changes:

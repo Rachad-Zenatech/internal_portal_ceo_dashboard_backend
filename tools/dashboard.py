@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from services.dashboard_service import (
+from services.dashboard.dashboard_service import (
     get_summary_metrics,
     get_revenue_vs_expenses,
     get_bank_account_balances,

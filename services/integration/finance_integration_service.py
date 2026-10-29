@@ -18,7 +18,7 @@ import jwt
 import httpx
 
 from postgresql_db.database import get_pool
-from services.cache_service import emit_cache_invalidation
+from services.shared.cache_service import emit_cache_invalidation
 
 logger = logging.getLogger(__name__)
 

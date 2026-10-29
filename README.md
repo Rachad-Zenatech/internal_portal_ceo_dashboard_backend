@@ -95,30 +95,49 @@ flowchart TD
 
 ---
 
-## Directory Structure
+<!-- project-structure:start -->
+## Project Structure
 
 ```text
-internal_portal_ceo_dashboard_backend/
-+-- postgresql_db/               # asyncpg database pool & table DDL
-+-- services/                    # Business service implementations
-�   +-- command_service.py       # Executive command dispatch
-�   +-- outbox_publisher.py      # Transactional outbox event engine
-�   +-- result_consumer.py       # AMQP result event consumer
-�   +-- admin_integration_service.py # Admin portal connector
-�   +-- finance_integration_service.py # Financial projection engine
-�   +-- rabbitmq_service.py      # aio-pika AMQP connection
-�   +-- service_status_registry.py # Health & latency monitoring
-�   +-- logging_service.py       # Structured CloudWatch logging
-+-- tools/                       # FastAPI route handlers
-�   +-- dashboard.py             # Executive KPI metrics
-�   +-- ceo_integration_router.py# M&A and Admin sync endpoints
-�   +-- approver_roles_router.py # Executive delegation endpoints
-�   +-- auth_router.py           # Microsoft SSO & mobile token exchange
-�   +-- notification_router.py   # SSE event stream
-+-- server.py                    # Application bootstrap & lifecycle
-+-- requirements.txt
-+-- run_server.sh
+server.py             # FastAPI app: startup/shutdown, middleware, router registration
+tools/                # HTTP routers (FastAPI APIRouter), one file per feature
+services/             # Business logic, grouped by feature (below)
+  shared/             # Used by several features: auth, RBAC, caching, logging, audit, security
+    auth_service.py, cache_service.py, logging_service.py
+    rbac_service.py, service_security_policy.py
+  ai/                 # Gemini clients, assistant chat, guardrails, tracing, semantic cache, usage limits
+    ai_guardrails.py, ai_observability.py, ai_usage_service.py
+  notifications/      # Notifications and messaging (SSE, RabbitMQ, MQTT, cross-portal events)
+    embedded_broker.py, mqtt_presence.py, notification_service.py
+    rabbitmq_service.py
+  dashboard/          # CEO dashboard KPI metrics (summary, revenue vs expenses, transactions, balances)
+    dashboard_service.py
+  integration/        # Cross-portal command bus (Admin, M&A, Finance): outbox, consumers, connectors/, circuit breakers, service status
+    admin_command_processor.py, admin_integration_service.py, command_service.py
+    finance_integration_service.py, integration_resilience.py, ma_command_processor.py
+    outbox_publisher.py, projection_service.py, result_consumer.py
+    service_status_registry.py
+  microsoft_graph/    # Microsoft Graph (Entra users/org) client
+    graph_service.py
+  reports/            # General Ledger quarterly/annual and reconciliation reports
+    report_service.py
+  uploads/            # File uploads: archive, S3 storage, upload security checks
+    s3_storage_service.py, upload_archive_service.py, upload_security_service.py
+models/               # Pydantic request/response models
+postgresql_db/        # database.py (asyncpg pool) and setup_*_schema.py table scripts
+mcp_tools/            # MCP tools and prompts (also used by the AI assistant via run_tool)
+scripts/              # Dev/ops scripts (seed, reset, pull prod data)
+docs/                 # Longer design and integration docs
 ```
+
+### Where new code goes
+
+* **New feature `<x>`:** logic in `services/<x>/`, endpoints in `tools/<x>_router.py`, models in `models/`, tables in `postgresql_db/setup_<x>_schema.py`.
+* **Code two or more features use** goes in `services/shared/` (or `services/ai/`, `services/notifications/` when it fits there). A feature folder must not import another feature's folder; move the common piece to `services/shared/` instead.
+* **Never add files at the root of `services/`.** Every module lives in a feature or shared folder.
+* **Imports are absolute** (`from services.shared.auth_service import ...`). The folders are namespace packages with no `__init__.py`, like the rest of the repo.
+* **When you move a module,** update every import, `mock.patch("...")` string and doc path, and fix any `__file__`-relative path in it (one more folder deep means one more `dirname`).
+<!-- project-structure:end -->
 
 ---
 

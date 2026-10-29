@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 
 from postgresql_db.database import get_pool
-from services.service_status_registry import service_status_registry
+from services.integration.service_status_registry import service_status_registry
 
 logger = logging.getLogger(__name__)
 

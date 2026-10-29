@@ -178,7 +178,7 @@ Used when an event occurs in a domain that other subsystems need to react to wit
 
 ## 5. Application-to-Application Scope & Security Policy
 
-To prevent cross-system privilege escalation and data leakage, all inter-service communication is governed by an **Application Access Control Matrix** enforced via `services/service_security_policy.py`.
+To prevent cross-system privilege escalation and data leakage, all inter-service communication is governed by an **Application Access Control Matrix** enforced via `services/shared/service_security_policy.py`.
 
 ### 5.1 Application Access Matrix
 

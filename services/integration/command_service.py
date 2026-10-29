@@ -11,10 +11,10 @@ from datetime import datetime, timezone
 from fastapi import HTTPException
 
 from postgresql_db.database import get_pool
-from services.connectors.connector_registry import connector_registry
-from services.connectors.base_connector import CommandEnvelope, UserContext
-from services.outbox_publisher import outbox_publisher
-from services.rabbitmq_service import COMMANDS_EXCHANGE_NAME
+from services.integration.connectors.connector_registry import connector_registry
+from services.integration.connectors.base_connector import CommandEnvelope, UserContext
+from services.integration.outbox_publisher import outbox_publisher
+from services.notifications.rabbitmq_service import COMMANDS_EXCHANGE_NAME
 
 logger = logging.getLogger(__name__)
 

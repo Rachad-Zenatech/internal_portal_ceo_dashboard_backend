@@ -70,7 +70,7 @@ async def emit_cache_invalidation(
     # 2. Invalidate overview cache in dashboard_service if scope affects financial/master data
     if scope in ("master_data", "overview", "finance", "accounting", "gl"):
         try:
-            from services.dashboard_service import _overview_cache, _overview_cache_lock
+            from services.dashboard.dashboard_service import _overview_cache, _overview_cache_lock
             async with _overview_cache_lock:
                 _overview_cache.clear()
         except Exception as exc:

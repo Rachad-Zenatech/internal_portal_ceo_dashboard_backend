@@ -2,11 +2,11 @@ from typing import Optional
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Query, Response
-from services.auth_service import require_permission
+from services.shared.auth_service import require_permission
 from uuid import UUID
 from fastapi import Depends
 
-from services.upload_archive_service import (
+from services.uploads.upload_archive_service import (
     UPLOAD_TYPES,
     delete_upload,
     list_uploads,

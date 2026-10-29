@@ -37,9 +37,9 @@ from mcp_tools.audit import get_audit_logs_tool, get_login_activity_logs_tool
 from mcp_tools.permissions import list_my_accessible_tools_tool
 from mcp_tools.upload_files import list_uploaded_files_tool, get_uploaded_file_tool
 
-from services.auth_service import current_user_id_ctx, user_can_use_mcp_tool, get_my_permissions
-from services.ai_guardrails import redact_pii
-from services.ai_observability import span
+from services.shared.auth_service import current_user_id_ctx, user_can_use_mcp_tool, get_my_permissions
+from services.ai.ai_guardrails import redact_pii
+from services.ai.ai_observability import span
 
 load_dotenv()
 logger = logging.getLogger(__name__)

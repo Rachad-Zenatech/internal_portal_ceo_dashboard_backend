@@ -1,6 +1,6 @@
 """
-M&A Service Connector
-Handles Mergers & Acquisitions domain commands, results, and local projection synchronization.
+Administration Service Connector
+Handles Administration Portal domain commands, results, and local projection synchronization.
 """
 
 import json
@@ -8,7 +8,7 @@ import logging
 from typing import Any, Dict, List, Optional, Type
 from pydantic import BaseModel, Field
 
-from services.connectors.base_connector import (
+from services.integration.connectors.base_connector import (
     BaseServiceConnector,
     CommandResultEnvelope,
     ProjectionEventEnvelope,
@@ -17,55 +17,77 @@ from services.connectors.base_connector import (
 logger = logging.getLogger(__name__)
 
 
-class TransitionDealStagePayload(BaseModel):
-    deal_id: Optional[str] = None
-    stage: str = Field(..., description="Target deal pipeline stage e.g. LOI_ACCEPTED, DUE_DILIGENCE, CLOSING")
+# --- Command Payload Schemas ---
+
+class PurchaseActionPayload(BaseModel):
+    action: str = Field(..., description="APPROVE, REJECT, or CANCEL")
     note: Optional[str] = None
 
 
-class UpdateDealPayload(BaseModel):
-    deal_id: Optional[str] = None
-    updates: Dict[str, Any] = Field(default_factory=dict)
+class AssignApproverMembersPayload(BaseModel):
+    role_code: str
+    members: List[Dict[str, Any]] = Field(default_factory=list)
 
 
-class AssignDealLeadPayload(BaseModel):
-    deal_id: Optional[str] = None
-    lead_user_id: str
-    lead_name: Optional[str] = None
+class RemoveApproverMemberPayload(BaseModel):
+    role_code: str
+    user_id: str
 
 
-class MAConnector(BaseServiceConnector):
+class WorkflowAssignmentPayload(BaseModel):
+    id: Optional[int] = None
+    role: str
+    user_id: Optional[Any] = None
+    user_ids: Optional[List[Any]] = None
+    team_id: Optional[Any] = None
+    request_type: Optional[str] = None
+    active: bool = True
+
+
+class AdministrationConnector(BaseServiceConnector):
     @property
     def service_name(self) -> str:
-        return "ma"
+        return "administration"
 
     @property
     def supported_command_types(self) -> List[str]:
         return [
-            "TRANSITION_DEAL_STAGE",
-            "UPDATE_DEAL",
-            "ASSIGN_DEAL_LEAD",
+            "APPROVE_REQUEST",
+            "REJECT_REQUEST",
+            "CANCEL_REQUEST",
+            "ASSIGN_APPROVER_MEMBERS",
+            "REMOVE_APPROVER_MEMBER",
+            "CREATE_WORKFLOW_ASSIGNMENT",
+            "UPDATE_WORKFLOW_ASSIGNMENT",
         ]
 
     def get_command_schema(self, command_type: str) -> Optional[Type[BaseModel]]:
         cmd = command_type.upper()
-        if cmd == "TRANSITION_DEAL_STAGE":
-            return TransitionDealStagePayload
-        elif cmd == "UPDATE_DEAL":
-            return UpdateDealPayload
-        elif cmd == "ASSIGN_DEAL_LEAD":
-            return AssignDealLeadPayload
+        if cmd in ["APPROVE_REQUEST", "REJECT_REQUEST", "CANCEL_REQUEST"]:
+            return PurchaseActionPayload
+        elif cmd == "ASSIGN_APPROVER_MEMBERS":
+            return AssignApproverMembersPayload
+        elif cmd == "REMOVE_APPROVER_MEMBER":
+            return RemoveApproverMemberPayload
+        elif cmd in ["CREATE_WORKFLOW_ASSIGNMENT", "UPDATE_WORKFLOW_ASSIGNMENT"]:
+            return WorkflowAssignmentPayload
         return None
 
     def get_routing_key(self, command_type: str, resource_type: str) -> str:
         cmd = command_type.upper()
-        if cmd == "TRANSITION_DEAL_STAGE":
-            return "ma.deal.transition"
-        elif cmd == "UPDATE_DEAL":
-            return "ma.deal.update"
-        elif cmd == "ASSIGN_DEAL_LEAD":
-            return "ma.deal.assign"
-        return f"ma.{resource_type.lower()}.{command_type.lower()}"
+        if cmd == "APPROVE_REQUEST":
+            return "administration.request.approve"
+        elif cmd == "REJECT_REQUEST":
+            return "administration.request.reject"
+        elif cmd == "CANCEL_REQUEST":
+            return "administration.request.cancel"
+        elif cmd == "ASSIGN_APPROVER_MEMBERS":
+            return "administration.approver.assign"
+        elif cmd == "REMOVE_APPROVER_MEMBER":
+            return "administration.approver.remove"
+        elif cmd in ["CREATE_WORKFLOW_ASSIGNMENT", "UPDATE_WORKFLOW_ASSIGNMENT"]:
+            return "administration.workflow.assign"
+        return f"administration.{resource_type.lower()}.{command_type.lower()}"
 
     def get_affected_query_keys(
         self,
@@ -74,13 +96,30 @@ class MAConnector(BaseServiceConnector):
         payload: Dict[str, Any],
         result: Optional[str] = None,
     ) -> List[str]:
-        return [
-            "maPipeline",
-            "maSummary",
-            "maEvents",
-            f"maDeal_{resource_id}",
-            "ceoAuditLogs",
-        ]
+        cmd = command_type.upper()
+        keys = []
+        if cmd in ["APPROVE_REQUEST", "REJECT_REQUEST", "CANCEL_REQUEST"]:
+            keys.extend([
+                "pendingApprovals",
+                f"approvalDetail_{resource_id}",
+                "approvedHistory",
+                "dashboardSummary",
+                "ceoAuditLogs",
+            ])
+        elif cmd in ["ASSIGN_APPROVER_MEMBERS", "REMOVE_APPROVER_MEMBER"]:
+            role = payload.get("role_code", resource_id)
+            keys.extend([
+                f"approverRoles_{role}",
+                f"approverRolesMembers_{role}",
+                "approverRoles",
+                "ceoAuditLogs",
+            ])
+        elif cmd in ["CREATE_WORKFLOW_ASSIGNMENT", "UPDATE_WORKFLOW_ASSIGNMENT"]:
+            keys.extend([
+                "workflowAssignments",
+                "purchasingAssignments",
+            ])
+        return keys
 
     async def handle_command_result(
         self,
@@ -88,7 +127,7 @@ class MAConnector(BaseServiceConnector):
         conn: Any,
     ) -> Optional[Dict[str, Any]]:
         """
-        Updates local projections on incoming command result from M&A.
+        Updates local projections on incoming command result from Administration.
         """
         res_type = result_envelope.resource_type.lower()
         res_id = result_envelope.resource_id
@@ -96,7 +135,7 @@ class MAConnector(BaseServiceConnector):
         result_status = result_envelope.result.upper()
 
         logger.info(
-            f"MAConnector processing result for command {result_envelope.command_id} "
+            f"AdminConnector processing result for command {result_envelope.command_id} "
             f"({cmd_type}): {result_status}"
         )
 
@@ -118,7 +157,7 @@ class MAConnector(BaseServiceConnector):
                     is_stale = false,
                     updated_at = NOW();
                 """,
-                "ma",
+                "administration",
                 res_type,
                 res_id,
                 result_envelope.source_version or 1,
@@ -126,7 +165,7 @@ class MAConnector(BaseServiceConnector):
                 result_envelope.source_status,
             )
 
-        # Audit log
+        # Also write an audit log
         try:
             await conn.execute(
                 """
@@ -134,10 +173,10 @@ class MAConnector(BaseServiceConnector):
                 VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
                 """,
                 f"{cmd_type}_RESULT",
-                "ma",
+                "administration",
                 "ceo-dashboard",
                 res_id,
-                "MA Worker",
+                "Administration Worker",
                 result_status,
                 json.dumps({
                     "command_id": result_envelope.command_id,
@@ -146,7 +185,7 @@ class MAConnector(BaseServiceConnector):
                 }),
             )
         except Exception as e:
-            logger.warning(f"Failed to record audit log in MAConnector: {e}")
+            logger.warning(f"Failed to record audit log in AdminConnector: {e}")
 
         return projection_data
 
@@ -156,7 +195,7 @@ class MAConnector(BaseServiceConnector):
         conn: Any,
     ) -> Optional[Dict[str, Any]]:
         """
-        Updates local projection when M&A broadcasts a pipeline update.
+        Updates local projection when Administration portal broadcasts a state change.
         """
         res_type = event_envelope.resource_type.lower()
         res_id = event_envelope.resource_id
@@ -174,7 +213,7 @@ class MAConnector(BaseServiceConnector):
                 is_stale = false,
                 updated_at = NOW();
             """,
-            "ma",
+            "administration",
             res_type,
             res_id,
             event_envelope.source_version or 1,

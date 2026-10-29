@@ -10,8 +10,8 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 import httpx
 
-from services.auth_service import get_current_user_id_dependency
-from services.admin_integration_service import _generate_service_token
+from services.shared.auth_service import get_current_user_id_dependency
+from services.integration.admin_integration_service import _generate_service_token
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ async def graph_user_search(q: Optional[str] = Query(None, description="Search q
     except Exception as exc:
         logger.warning(f"Admin API graph search forwarding note: {exc}")
 
-    from services.graph_service import search_users
+    from services.microsoft_graph.graph_service import search_users
     results = await search_users(param_q)
     return [
         GraphUserResult(

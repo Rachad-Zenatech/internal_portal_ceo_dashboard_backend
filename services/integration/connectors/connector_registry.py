@@ -4,7 +4,7 @@ Maintains typed registrations for all service connectors in the CEO Dashboard ec
 """
 
 from typing import Dict, List, Optional
-from services.connectors.base_connector import BaseServiceConnector
+from services.integration.connectors.base_connector import BaseServiceConnector
 
 class ConnectorRegistry:
     def __init__(self):

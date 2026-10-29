@@ -10,14 +10,14 @@ import logging
 from typing import Any, Dict
 from datetime import datetime, timezone
 
-from services.connectors.base_connector import (
+from services.integration.connectors.base_connector import (
     CommandEnvelope,
     CommandResultEnvelope,
     FailureInfo,
 )
-from services.logging_service import create_background_task
-from services.rabbitmq_service import rabbitmq_manager, EVENTS_EXCHANGE_NAME
-from services.admin_integration_service import (
+from services.shared.logging_service import create_background_task
+from services.notifications.rabbitmq_service import rabbitmq_manager, EVENTS_EXCHANGE_NAME
+from services.integration.admin_integration_service import (
     execute_purchase_transition,
     _generate_service_token,
     ADMIN_API_BASE,
@@ -47,7 +47,7 @@ class AdminCommandProcessor:
         create_background_task(self.recover_unprocessed_commands(), name="admin-recover-unprocessed-commands")
 
         # 2. Listen for service online transitions to auto-flush queued commands
-        from services.service_status_registry import service_status_registry
+        from services.integration.service_status_registry import service_status_registry
 
         def _on_admin_status(svc: str, status: str, _):
             if svc.lower() == "admin" and status == "online":
@@ -137,7 +137,7 @@ class AdminCommandProcessor:
             logger.debug(f"Note updating command processing status: {st_err}")
 
         # Wait until Administration Portal service is online before executing remote domain action
-        from services.service_status_registry import service_status_registry
+        from services.integration.service_status_registry import service_status_registry
         is_online = await service_status_registry.wait_until_online("admin", timeout=600.0)
         if not is_online:
             logger.warning(f"Admin service did not come online within timeout for command {cmd_id}")

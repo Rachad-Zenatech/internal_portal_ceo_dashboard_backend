@@ -11,8 +11,8 @@ import jwt
 import httpx
 
 from postgresql_db.database import get_conn
-from services.logging_service import create_background_task
-from services.integration_resilience import (
+from services.shared.logging_service import create_background_task
+from services.integration.integration_resilience import (
     admin_circuit_breaker,
     ma_circuit_breaker,
     execute_resilient_call,
@@ -381,7 +381,7 @@ def _parse_purchase_request_item(r: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def check_portals_health() -> List[Dict[str, Any]]:
-    from services.service_status_registry import service_status_registry
+    from services.integration.service_status_registry import service_status_registry
 
     admin_status = service_status_registry.get_service_status("admin")
     ma_status = service_status_registry.get_service_status("ma")
@@ -615,7 +615,7 @@ async def get_pending_purchase_requests(user_id: Optional[UUID] = None) -> List[
     - STRICTLY returns only requests in WAITING_APPROVAL status (excluding UNDER_REVIEW, NEW, DRAFT, SUBMITTED).
     - When Admin Portal is offline, returns the local persistent copy from PostgreSQL projections.
     """
-    from services.service_status_registry import service_status_registry
+    from services.integration.service_status_registry import service_status_registry
     is_online = service_status_registry.is_service_online("admin")
 
     if is_online or admin_circuit_breaker.allow_request():
@@ -646,7 +646,7 @@ async def get_completed_purchase_requests(user_id: Optional[UUID] = None) -> Lis
     - When Admin Portal is online or reachable, pulls live records, updates PostgreSQL local copy, and returns.
     - When Admin Portal is offline, returns the local persistent copy from PostgreSQL projections.
     """
-    from services.service_status_registry import service_status_registry
+    from services.integration.service_status_registry import service_status_registry
     is_online = service_status_registry.is_service_online("admin")
 
     if is_online or admin_circuit_breaker.allow_request():
@@ -677,7 +677,7 @@ async def get_purchase_request_detail(request_id: str, user_id: Optional[UUID] =
     - If Admin Portal is online or reachable, fetches from remote and caches locally.
     - If offline, returns detail from PostgreSQL projection store.
     """
-    from services.service_status_registry import service_status_registry
+    from services.integration.service_status_registry import service_status_registry
     is_online = service_status_registry.is_service_online("admin")
 
     if is_online or admin_circuit_breaker.allow_request():
@@ -738,7 +738,7 @@ async def execute_purchase_transition(request_id: str, action: str, note: Option
     """
     Executes approval or rejection of a purchase request via Administration Portal.
     """
-    from services.service_status_registry import service_status_registry
+    from services.integration.service_status_registry import service_status_registry
     is_online = service_status_registry.is_service_online("admin")
 
     if not is_online and not admin_circuit_breaker.allow_request():
@@ -805,7 +805,7 @@ async def execute_batch_purchase_transition(
     First attempts using Admin Portal's /api/purchasing/batch-approve or /api/purchasing/batch-reject.
     Falls back to individual resilient transitions if the batch endpoint is unreachable.
     """
-    from services.service_status_registry import service_status_registry
+    from services.integration.service_status_registry import service_status_registry
     is_online = service_status_registry.is_service_online("admin")
 
     if not is_online and not admin_circuit_breaker.allow_request():
@@ -952,7 +952,7 @@ async def get_admin_tasks(user_id: Optional[UUID] = None) -> List[Dict[str, Any]
     - When Admin Portal is online, pulls live records and caches into PostgreSQL asynchronously.
     - When Admin Portal is offline, returns the persistent local copy from PostgreSQL.
     """
-    from services.service_status_registry import service_status_registry
+    from services.integration.service_status_registry import service_status_registry
     is_online = service_status_registry.is_service_online("admin")
 
     if is_online:
@@ -1072,7 +1072,7 @@ async def get_ma_pipeline_tasks(limit: int = 50, skip: int = 0, loi_accepted_onl
     - When M&A service is online, fetches live and updates the PostgreSQL local projection asynchronously.
     - When M&A service is offline, returns the persistent local copy from PostgreSQL.
     """
-    from services.service_status_registry import service_status_registry
+    from services.integration.service_status_registry import service_status_registry
     is_online = service_status_registry.is_service_online("ma")
 
     raw_data: List[Dict[str, Any]] = []
@@ -1116,7 +1116,7 @@ async def get_ma_pipeline_summary() -> Dict[str, Any]:
     """
     Aggregates executive metrics via M&A Microservice API or computes directly from local PostgreSQL projections when offline.
     """
-    from services.service_status_registry import service_status_registry
+    from services.integration.service_status_registry import service_status_registry
     is_online = service_status_registry.is_service_online("ma")
 
     tasks: List[Dict[str, Any]] = []
