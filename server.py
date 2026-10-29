@@ -1,6 +1,7 @@
 from tools.upload_files import router as upload_files_router
 # server.py - CEO Executive Dashboard Backend Server
 import asyncio
+import json
 import logging
 import os
 import re
@@ -14,7 +15,7 @@ import sys
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastmcp import FastMCP
 from pydantic import BaseModel, Field
@@ -48,7 +49,9 @@ from tools.service_status_router import router as service_status_router
 from tools.finance_integration_router import router as finance_integration_router
 
 # MCP tools
-from mcp_tools import register_all as register_mcp_tools, ask_gemini, ask_gemini_stream, sync_mcp_tools_to_vector_db
+from mcp_tools import register_all as register_mcp_tools, sync_mcp_tools_to_vector_db, ask_gemini_stream
+from services import ai_observability, ai_usage_service
+from services.ai_guardrails import screen_input
 
 
 # FastAPI, MCP tools, and the lightweight worker share one DB pool in this process.
@@ -89,6 +92,11 @@ async def lifespan(app: FastAPI):
 
         from postgresql_db.cross_service_schema import ensure_cross_service_schema
         await ensure_cross_service_schema()
+        try:
+            from postgresql_db.setup_ai_observability_schema import setup as setup_ai_observability_schema
+            await setup_ai_observability_schema()
+        except Exception as ai_err:
+            logger.warning(f"AI observability schema setup note: {ai_err}")
 
         # Initialize Connectors package
         import services.connectors
@@ -99,6 +107,11 @@ async def lifespan(app: FastAPI):
     sync_task = asyncio.create_task(sync_mcp_tools_to_vector_db(), name="mcp-tool-sync")
     sync_task.add_done_callback(
         partial(log_background_task_result, task_name="mcp-tool-sync")
+    )
+    # AI traces and prompt logs: written in batches as they arrive (waits on a queue, no polling)
+    trace_task = asyncio.create_task(ai_observability.writer_loop(), name="ai-trace-writer")
+    trace_task.add_done_callback(
+        partial(log_background_task_result, task_name="ai-trace-writer")
     )
     # Initialize Event-Driven MQTT Engine, Presence & Status Registry
     from services.embedded_broker import ensure_mqtt_broker_running, stop_embedded_mqtt_broker
@@ -133,6 +146,7 @@ async def lifespan(app: FastAPI):
     finally:
         logger.info("Application shutdown beginning", extra={"event": "application_stopping"})
         sync_task.cancel()
+        trace_task.cancel()
         await outbox_publisher.stop()
         await result_consumer.stop()
         await admin_command_processor.stop()
@@ -141,7 +155,8 @@ async def lifespan(app: FastAPI):
         await ceo_presence.stop()
         await service_status_registry.stop()
         await stop_embedded_mqtt_broker()
-        await asyncio.gather(sync_task, return_exceptions=True)
+        await asyncio.gather(sync_task, trace_task, return_exceptions=True)
+        await ai_observability.flush()
         await close_pool()
         await close_admin_pool()
         loop.set_exception_handler(previous_exception_handler)
@@ -171,10 +186,32 @@ from services.auth_service import (
 )
 from tools.rbac_router import get_current_user_id
 
+# The whole conversation sent to Gemini in one request, so one request can't use a huge share of the quota.
+CHAT_MAX_TOTAL_CHARS = 60_000
+CHAT_BLOCKED_MESSAGE = (
+    "This message looks like an attempt to change the assistant's instructions, so it wasn't sent. "
+    "Rephrase it as a question about the portal."
+)
+
 @app.post("/ai/chat")
 async def ai_chat(req: ChatRequest, user_id: UUID = Depends(get_current_user_id)):
+    if len(req.message) + sum(len(h.content) for h in req.history) > CHAT_MAX_TOTAL_CHARS:
+        raise HTTPException(status_code=413, detail="The conversation is too long. Start a new one.")
+    current_user_id_ctx.set(user_id)
+    # Input screening first: a message trying to change the assistant's instructions is refused before anything is
+    # sent to Gemini or counted toward the limits.
+    guard = screen_input("\n".join([req.message] + [h.content for h in req.history if h.role == "user"]))
+    if guard.blocked:
+        ai_observability.log_prompt(feature="CHAT", model=None, prompt=req.message, response=CHAT_BLOCKED_MESSAGE,
+                                    status="BLOCKED", guard_verdict=guard.verdict, guard_categories=guard.categories)
+        logger.warning("AI chat message blocked by input screening",
+                       extra={"event": "ai_input_blocked", "user_id": str(user_id)})
+        blocked = [f"data: {json.dumps({'type': 'error', 'message': CHAT_BLOCKED_MESSAGE})}\n\n",
+                   f"data: {json.dumps({'type': 'done'})}\n\n"]
+        return StreamingResponse(iter(blocked), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
+    # Counts toward the daily AI limits (429 with when it frees up).
+    await ai_usage_service.reserve("CHAT", user_id)
     try:
-        current_user_id_ctx.set(user_id)
         async def stream_generator():
             try:
                 async for chunk in ask_gemini_stream(req.message, req.history, req.file_data, req.mime_type):

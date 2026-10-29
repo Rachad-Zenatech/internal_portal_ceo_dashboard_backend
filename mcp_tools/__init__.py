@@ -5,11 +5,18 @@
 # module-level function; `register_all` attaches tools via `mcp.add_tool` and
 # prompts via `mcp.add_prompt`, deriving the name and description from the
 # function name and docstring.
+#
+# The same tools serve two callers, with the same RBAC check, tracing and output
+# redaction: MCP clients (mcp_tools.middleware) and code that runs a tool on a
+# person's behalf (run_tool).
 import os
 import re
 import inspect
 import asyncio
 import json
+import logging
+from typing import Any, Callable, Dict, List, Optional
+from uuid import UUID
 
 from dotenv import load_dotenv
 from google import genai
@@ -31,8 +38,11 @@ from mcp_tools.permissions import list_my_accessible_tools_tool
 from mcp_tools.upload_files import list_uploaded_files_tool, get_uploaded_file_tool
 
 from services.auth_service import current_user_id_ctx, user_can_use_mcp_tool, get_my_permissions
+from services.ai_guardrails import redact_pii
+from services.ai_observability import span
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 import motor.motor_asyncio
 
@@ -250,13 +260,62 @@ MCP_TOOL_CODE_MAP = {
     "list_my_accessible_tools_tool": "list_my_accessible_tools_tool",
 }
 
+TOOLS_BY_NAME: Dict[str, Callable[..., Any]] = {t.__name__: t for t in ALL_TOOLS}
+
+
+def tool_code(name: str) -> str:
+    return MCP_TOOL_CODE_MAP.get(name, name)
+
+
 def register_all(mcp) -> None:
     """Register every MCP tool and prompt with the given FastMCP instance."""
+    from mcp_tools.middleware import McpAccessMiddleware
+
+    mcp.add_middleware(McpAccessMiddleware())
     for tool in ALL_TOOLS:
         mcp.add_tool(tool)
 
     for prompt in ALL_PROMPTS:
         mcp.add_prompt(Prompt.from_function(prompt))
+
+
+async def allowed_tool_names(user_id: Optional[UUID]) -> List[str]:
+    """The registered tools this person's roles allow (all of them for super admins)."""
+    if not user_id:
+        return []
+    perms = await get_my_permissions(user_id)
+    if not perms:
+        return []
+    is_super_admin = perms.get("user", {}).get("is_super_admin") or any(
+        r.get("code") == "SUPER_ADMIN" for r in perms.get("roles", [])
+    )
+    codes = set(perms.get("mcp_tool_permissions") or [])
+    return [name for name in TOOLS_BY_NAME if is_super_admin or tool_code(name) in codes]
+
+
+async def run_tool(name: str, args: Dict[str, Any], user_id: Optional[UUID], source: str = "chat") -> str:
+    """Run a tool for a person: RBAC check, traced, output PII-redacted. Failures come back as text for the model."""
+    async with span("tool", name, source=source, code=tool_code(name), args=sorted(args)) as s:
+        fn = TOOLS_BY_NAME.get(name)
+        if fn is None:
+            s.status = "ERROR"
+            return f"There is no tool called {name}."
+        if not user_id or not await user_can_use_mcp_tool(user_id, tool_code(name)):
+            s.status, s.error_type = "DENIED", "PermissionDenied"
+            return "You don't have permission to use this tool."
+        current_user_id_ctx.set(user_id)
+        params = inspect.signature(fn).parameters
+        takes_any = any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values())
+        try:
+            # Arguments the tool doesn't take (the model sometimes invents some) are dropped.
+            result = await fn(**{k: v for k, v in args.items() if takes_any or k in params})
+        except Exception as e:
+            logger.exception("Tool %s failed", name, extra={"event": "mcp_tool_failed"})
+            s.status, s.error_type = "ERROR", type(e).__name__
+            return "The tool failed. Try again or answer without it."
+        text, redactions = redact_pii(result if isinstance(result, str) else json.dumps(result, default=str))
+        s.attributes.update(result_chars=len(text), pii_redactions=redactions or None)
+        return text
 
 
 async def _run_tool(tool_name: str, tool_args: dict):
@@ -904,24 +963,26 @@ async def sync_mcp_tools_to_vector_db():
         pool = get_pool()
         if pool is not None:
             try:
+                names = [t.__name__ for t in GEMINI_TOOLS]
                 async with pool.acquire() as conn:
-                    # Deactivate all tools first to ensure removed tools are disabled
-                    await conn.execute('UPDATE mcp_tools SET is_active = false')
-                    
-                    for tool in GEMINI_TOOLS:
-                        name = tool.__name__
-                        desc = inspect.getdoc(tool) or name
-                        code = MCP_TOOL_CODE_MAP.get(name, name)
-                        friendly_name = name.replace('_tool', '').replace('_', ' ').title()
-                        
+                    # One batch statement; tools no longer registered are deactivated.
+                    async with conn.transaction():
+                        await conn.execute('UPDATE mcp_tools SET is_active = false WHERE NOT (code = ANY($1::text[]))',
+                                           [tool_code(n) for n in names])
                         await conn.execute('''
                             INSERT INTO mcp_tools (name, code, server_name, description, is_read_only, is_sensitive, is_active)
-                            VALUES ($1, $2, $3, $4, $5, $6, $7)
-                            ON CONFLICT (code) DO UPDATE SET 
+                            SELECT name, code, $4::text, description, true, false, true
+                            FROM unnest($1::text[], $2::text[], $3::text[]) AS t(name, code, description)
+                            ON CONFLICT (code) DO UPDATE SET
                                 name = EXCLUDED.name,
                                 description = EXCLUDED.description,
                                 is_active = true
-                        ''', friendly_name, code, "accounting-mcp", desc, True, False, True)
+                        ''',
+                            [n.replace('_tool', '').replace('_', ' ').title() for n in names],
+                            [tool_code(n) for n in names],
+                            [inspect.getdoc(t) or t.__name__ for t in GEMINI_TOOLS],
+                            "accounting-mcp",
+                        )
                 print("Successfully synced tools to Postgres.")
             except Exception as e:
                 print(f"Error syncing to Postgres: {e}")
