@@ -16,7 +16,6 @@ the AI features down. Retention: AI_TRACE_RETENTION_DAYS and AI_PROMPT_LOG_RETEN
 Prompt text is stored unless AI_PROMPT_LOG_CONTENT=false (then only sizes, model, tokens and status are kept), and is
 always PII-redacted and cut to AI_PROMPT_LOG_MAX_CHARS.
 """
-
 import asyncio
 import contextvars
 import json
