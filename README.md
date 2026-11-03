@@ -215,8 +215,9 @@ S3_BUCKET_NAME=zenatech-ceo-archives-dev
 ```
 
 ### 4. Run Development Server
+Or directly via Uvicorn (with `--timeout-graceful-shutdown 2` to release port 8005 cleanly on exit):
 ```bash
-uvicorn server:app --host 0.0.0.0 --port 8005 --reload
+uvicorn server:app --host 0.0.0.0 --port 8005 --reload --timeout-graceful-shutdown 2
 ```
 Swagger UI: `http://localhost:8005/docs`.
 
