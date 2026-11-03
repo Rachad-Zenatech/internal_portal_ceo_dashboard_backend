@@ -53,3 +53,13 @@ jobs:
           python -m postgresql_db.schemas.cross_service_schema
           python -m postgresql_db.schemas.notifications_schema
           echo "[*] Database schema verification complete!"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Verify Code Map & Project Index Freshness
+        run: |
+          node .agents/gen_code_map.mjs
+          git diff --exit-code .agents/code-map.md .agents/project-index.md || (echo "Error: .agents/code-map.md or project-index.md is out of date. Run 'node .agents/gen_code_map.mjs' and commit the changes." && exit 1)

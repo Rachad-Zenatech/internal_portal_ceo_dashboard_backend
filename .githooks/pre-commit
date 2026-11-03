@@ -1,0 +1,14 @@
+#!/bin/sh
+# Auto-generate .agents/code-map.md and .agents/project-index.md before commit
+if [ -f .agents/gen_code_map.mjs ]; then
+  if command -v node >/dev/null 2>&1; then
+    node .agents/gen_code_map.mjs >/dev/null 2>&1
+    if [ -f .agents/code-map.md ]; then
+      git add .agents/code-map.md
+    fi
+    if [ -f .agents/project-index.md ]; then
+      git add .agents/project-index.md
+    fi
+  fi
+fi
+exit 0

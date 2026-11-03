@@ -1,0 +1,93 @@
+---
+trigger: model_decision
+description: Apply when modifying backend code: stack, routers/services/models layout, DB conventions, real-time/SSE rules and checks for this project.
+---
+
+# Project Guidelines
+
+Lean rules for the enterprise backend workspace.
+
+## Stack
+
+- FastAPI routers in `tools/`, async business/DB logic in `services/`, Pydantic schemas in `models/`, DB helpers in `postgresql_db/database.py`.
+- Frontend workspace: `C:\dev\enterprise_system\front\ceo_frontend`.
+- Keep backend contracts synchronized with frontend `src/types`; reusable frontend API types stay out of services/hooks.
+
+## Backend
+
+- Put endpoints in the matching `tools/*` router; keep SQL and business rules in `services/*`.
+- Use Pydantic models for non-trivial JSON bodies.
+- Use asyncpg placeholders; never interpolate user values into SQL.
+- Use transactions for related writes, import/save flows, and atomic operations.
+- Alias imported service functions when route names would collide.
+- Preserve route groups: `/accounting/*`, `/bank_statement/*`, `/dashboard/*`, `/reports/*`, `/upload-files/*`, `/company/*`.
+- Do not silently delete or replace accounting data; use pending/saved, merge, update, or explicit replacement flows.
+
+## General Ledger
+
+- New companies default to no GL book/default format unless explicitly assigned.
+- Show unassigned companies on `/general-ledger`; assign books only through explicit endpoint/action.
+- GL imports are two phase: parse to pending, save to saved; cancel deletes only pending imports.
+- Keep GL card, preview, trial balance, and company ledger shapes stable; update frontend `src/types` when they change.
+
+## Checks
+
+- Python: run `.\.venv\Scripts\python.exe -m py_compile <touched files>` after backend changes.
+- Frontend contract/UI changes: run `npm run build` in the frontend workspace.
+- Run `git diff --check` on touched files.
+- LLM-created task-specific test, probe, fixture, snapshot, and scratch files are temporary by default. Run them, record the result, and remove them before finishing.
+- Remove all test scripts and any non‑production check scripts after testing or verification is complete.
+- Remove all seeding scripts (e.g., scripts that insert sample data) after they have been executed.
+
+### Server-Sent Events (SSE) & Real-Time Event Streaming
+* **"Wait for Event" Model Only (Mandatory):**
+  * **NEVER** use polling loops (`check -> sleep -> check`) or database polling heartbeats inside SSE streaming endpoints.
+  * **NEVER** query the database repeatedly inside SSE stream generators.
+  * **Always** use `await event_queue.get()` (or `asyncio.wait_for(q.get(), timeout=30.0)` for lightweight ping) to suspend the coroutine at the event loop level with zero CPU/DB overhead until a published event arrives.
+
+* **Architecture Recommendation:**
+  > **SSE + event-driven backend + 30–60 second lightweight heartbeat + automatic reconnect.**
+  >
+  > Don't use the heartbeat to poll the database.
+  >
+  > That gives you:
+  > ```text
+  > No notification
+  >       ↓
+  > Server mostly waits
+  >       ↓
+  > Tiny heartbeat occasionally
+  >       ↓
+  > Notification occurs
+  >       ↓
+  > Immediate SSE event
+  > ```
+  > That is a much better balance between server load and connection reliability.
+  > And your CloudFront test strongly suggests that completely silent SSE connections are not viable in your current setup.
+
+  * Standard SSE generator implementation (with lightweight zero-DB heartbeat):
+    ```python
+    async def event_generator():
+        q = asyncio.Queue()
+        broadcaster.add_listener(q)
+        try:
+            yield ": connected
+
+"
+            while True:
+                try:
+                    msg = await asyncio.wait_for(q.get(), timeout=30.0)
+                    if msg.user_id == "*" or str(msg.user_id).lower() == str(user_id).lower():
+                        yield f"data: {msg.model_dump_json()}
+
+"
+                except asyncio.TimeoutError:
+                    # Lightweight keep-alive comment/ping to prevent CloudFront/proxy timeouts without querying the database
+                    yield ": ping
+
+"
+        except (asyncio.CancelledError, GeneratorExit):
+            pass
+        finally:
+            broadcaster.remove_listener(q)
+    ```
