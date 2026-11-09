@@ -503,7 +503,7 @@ class RabbitMQManager:
         instance_id = data.get("instanceId") or f"{svc}-hub"
         self._self_reports[svc] = {"instanceId": instance_id, "status": status, "epoch": time.time()}
         try:
-            from services.integration.service_status_registry import service_status_registry
+            from services.integration.services.service_status_registry import service_status_registry
             service_status_registry.update_instance_status(
                 svc, instance_id, status, data.get("timestamp"), data.get("reason") or "hub_presence"
             )
@@ -518,7 +518,7 @@ class RabbitMQManager:
                 continue
             rec["status"] = "offline"
             try:
-                from services.integration.service_status_registry import service_status_registry
+                from services.integration.services.service_status_registry import service_status_registry
                 service_status_registry.update_instance_status(svc, rec["instanceId"], "offline", None, "heartbeat_timeout")
             except Exception as exc:
                 logger.debug(f"Failed expiring stale hub presence for {svc}: {exc}")

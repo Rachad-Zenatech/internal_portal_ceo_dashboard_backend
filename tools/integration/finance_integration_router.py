@@ -9,7 +9,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from services.shared.auth_service import get_current_user_id_dependency
-from services.integration.finance_integration_service import (
+from services.integration.services.finance_integration_service import (
     finance_circuit_breaker,
     check_finance_health,
     get_finance_companies,

@@ -122,7 +122,7 @@ async def lifespan(app: FastAPI):
         partial(log_background_task_result, task_name="ai-trace-writer")
     )
     # Service Status Registry: availability now arrives over the RabbitMQ message hub (see rabbitmq_service).
-    from services.integration.service_status_registry import service_status_registry
+    from services.integration.services.service_status_registry import service_status_registry
 
     # MQTT engine disabled: presence flows over the RabbitMQ message hub instead.
     # from services.notifications.embedded_broker import ensure_mqtt_broker_running, stop_embedded_mqtt_broker
@@ -137,10 +137,10 @@ async def lifespan(app: FastAPI):
 
     # Initialize Asynchronous Cross-Service Messaging & Workers
     from services.notifications.rabbitmq_service import rabbitmq_manager
-    from services.integration.outbox_publisher import outbox_publisher
-    from services.integration.result_consumer import result_consumer
-    from services.integration.admin_command_processor import admin_command_processor
-    from services.integration.ma_command_processor import ma_command_processor
+    from services.integration.commands.outbox_publisher import outbox_publisher
+    from services.integration.commands.result_consumer import result_consumer
+    from services.integration.commands.admin_command_processor import admin_command_processor
+    from services.integration.commands.ma_command_processor import ma_command_processor
 
     await rabbitmq_manager.connect()
     outbox_publisher.start()
@@ -358,8 +358,8 @@ async def message_hub_stream(request: Request):
 @app.get("/api/integration/status")
 @app.get("/api/integration-status")
 async def api_ceo_integration_status():
-    from services.integration.service_status_registry import service_status_registry
-    from services.integration.integration_resilience import admin_circuit_breaker, ma_circuit_breaker
+    from services.integration.services.service_status_registry import service_status_registry
+    from services.integration.services.integration_resilience import admin_circuit_breaker, ma_circuit_breaker
     import httpx
 
     # Message Hub is the source of truth for peer presence (replaces MQTT)

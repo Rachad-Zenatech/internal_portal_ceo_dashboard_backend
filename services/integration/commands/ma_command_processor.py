@@ -71,7 +71,7 @@ class MACommandProcessor:
             logger.debug(f"Note updating command processing status: {st_err}")
 
         # Wait until M&A service is online before executing remote domain action
-        from services.integration.service_status_registry import service_status_registry
+        from services.integration.services.service_status_registry import service_status_registry
         is_online = await service_status_registry.wait_until_online("ma", timeout=600.0)
         if not is_online:
             logger.warning(f"M&A service did not come online within timeout for command {cmd_id}")

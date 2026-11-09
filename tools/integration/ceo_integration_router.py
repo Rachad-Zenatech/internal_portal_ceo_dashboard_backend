@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from postgresql_db.database import get_conn, fetch_all, fetch_one, execute
-from services.integration.admin_integration_service import (
+from services.integration.services.admin_integration_service import (
     get_portal_health,
     get_pending_purchase_requests,
     get_completed_purchase_requests,
@@ -60,7 +60,7 @@ def _register_circuit_breaker_listeners():
     the instant it flips OPEN (offline), HALF_OPEN (probing), or CLOSED (back online),
     instead of waiting for the ~24s portal health poll cycle to notice.
     """
-    from services.integration.integration_resilience import admin_circuit_breaker, ma_circuit_breaker, CircuitState
+    from services.integration.services.integration_resilience import admin_circuit_breaker, ma_circuit_breaker, CircuitState
 
     def _make_listener():
         def _on_state_change(name: str, old_state: str, new_state: str):
@@ -208,7 +208,7 @@ async def get_approval_request_detail(request_id: str, user_id: Optional[UUID] =
     """
     Fetches full request details including product info, line items, and quote attachments from Admin Portal.
     """
-    from services.integration.admin_integration_service import get_purchase_request_detail
+    from services.integration.services.admin_integration_service import get_purchase_request_detail
     detail = await get_purchase_request_detail(request_id, user_id=user_id)
     if not detail:
         raise HTTPException(status_code=404, detail="Purchase request not found")
@@ -227,10 +227,10 @@ async def execute_approval_action(
     - If Admin Portal is reachable, transitions live immediately and returns 200 SUCCEEDED.
     - If Admin Portal is offline, queues durable asynchronous command and returns 202 QUEUED.
     """
-    from services.integration.admin_integration_service import execute_purchase_transition
-    from services.integration.integration_resilience import admin_circuit_breaker
-    from services.integration.service_status_registry import service_status_registry
-    from services.integration.command_service import command_service
+    from services.integration.services.admin_integration_service import execute_purchase_transition
+    from services.integration.services.integration_resilience import admin_circuit_breaker
+    from services.integration.services.service_status_registry import service_status_registry
+    from services.integration.commands.command_service import command_service
     from services.integration.connectors.base_connector import UserContext
 
     action_type = payload.action.upper()
@@ -342,10 +342,10 @@ async def execute_bulk_approval_action(
     - If Admin Portal is reachable, transitions requests in batch and returns 200 SUCCEEDED.
     - If Admin Portal is offline, queues durable asynchronous commands for each request and returns 202 QUEUED.
     """
-    from services.integration.admin_integration_service import execute_batch_purchase_transition
-    from services.integration.integration_resilience import admin_circuit_breaker
-    from services.integration.service_status_registry import service_status_registry
-    from services.integration.command_service import command_service
+    from services.integration.services.admin_integration_service import execute_batch_purchase_transition
+    from services.integration.services.integration_resilience import admin_circuit_breaker
+    from services.integration.services.service_status_registry import service_status_registry
+    from services.integration.commands.command_service import command_service
     from services.integration.connectors.base_connector import UserContext
     from postgresql_db.database import get_pool
 
@@ -468,7 +468,7 @@ async def get_command_status_endpoint(command_id: str):
     """
     Returns the real-time tracking status of any cross-service durable command.
     """
-    from services.integration.command_service import command_service
+    from services.integration.commands.command_service import command_service
     status = await command_service.get_command_status(command_id)
     if not status:
         raise HTTPException(status_code=404, detail="Command not found")
@@ -483,7 +483,7 @@ async def retry_command_endpoint(
     """
     Retries an eligible failed cross-service command.
     """
-    from services.integration.command_service import command_service
+    from services.integration.commands.command_service import command_service
     from services.integration.connectors.base_connector import UserContext
 
     user_ctx = UserContext(
@@ -549,7 +549,7 @@ async def publish_event(payload: CeoEventPayload):
         event_type_upper = payload.event_type.upper()
         if event_type_upper.startswith("PURCHASE_") or "APPROVAL" in event_type_upper:
             try:
-                from services.integration.admin_integration_service import sync_admin_records_from_source
+                from services.integration.services.admin_integration_service import sync_admin_records_from_source
                 asyncio.create_task(sync_admin_records_from_source())
                 create_background_task(sync_admin_records_from_source(), name="sync-admin-records-on-event")
             except Exception as e:
@@ -565,7 +565,7 @@ async def publish_event(payload: CeoEventPayload):
         elif event_type_upper.startswith("MA_") or "LOI" in event_type_upper:
             try:
                 from services.notifications.notification_service import sync_ma_loi_accepted_notifications
-                from services.integration.admin_integration_service import get_ma_pipeline_tasks
+                from services.integration.services.admin_integration_service import get_ma_pipeline_tasks
                 ma_tasks = await get_ma_pipeline_tasks(limit=100, skip=0)
                 if ma_tasks:
                     accepted_loi = [t for t in ma_tasks if (t.get("priority_name") or "").lower() in ["loi sent - accepted", "loi accepted"]]
@@ -652,7 +652,7 @@ async def get_ma_summary_endpoint():
     """
     Fetches live aggregated metrics and KPI statistics from the M&A Acquisitions Tracking system.
     """
-    from services.integration.admin_integration_service import get_ma_pipeline_summary
+    from services.integration.services.admin_integration_service import get_ma_pipeline_summary
     return await get_ma_pipeline_summary()
 
 
@@ -661,7 +661,7 @@ async def get_ma_events_endpoint(limit: int = Query(50, ge=1, le=200)):
     """
     Fetches transformed M&A deal activities, stage changes, and pipeline updates.
     """
-    from services.integration.admin_integration_service import get_ma_events
+    from services.integration.services.admin_integration_service import get_ma_events
     return await get_ma_events(limit=limit)
 
 
@@ -675,7 +675,7 @@ async def get_ma_pipeline_endpoint(
     """
     Fetches active M&A pipeline deal records with pagination and optional LOI Accepted filtering.
     """
-    from services.integration.admin_integration_service import get_ma_pipeline_tasks
+    from services.integration.services.admin_integration_service import get_ma_pipeline_tasks
     return await get_ma_pipeline_tasks(limit=limit, skip=skip, loi_accepted_only=loi_accepted_only)
 
 
@@ -694,7 +694,7 @@ async def transition_ma_deal_endpoint(
     """
     Dispatches a durable asynchronous command to transition an M&A deal to a new stage.
     """
-    from services.integration.command_service import command_service
+    from services.integration.commands.command_service import command_service
     from services.integration.connectors.base_connector import UserContext
 
     user_ctx = UserContext(
@@ -727,7 +727,7 @@ async def update_ma_deal_endpoint(
     """
     Dispatches a durable asynchronous command to update an M&A deal's properties.
     """
-    from services.integration.command_service import command_service
+    from services.integration.commands.command_service import command_service
     from services.integration.connectors.base_connector import UserContext
 
     user_ctx = UserContext(

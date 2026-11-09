@@ -7,11 +7,24 @@ Architectural standards are in `.agents/rules/` and loaded only when relevant:
 
 ---
 
-## 0. AI Agent Efficiency & Execution Budget
+## 0. MANDATORY ORIENTATION GATE (READ BEFORE ANY FILE ACCESS)
+
+Every AI agent working in this repository MUST follow this sequence before touching or reading code:
+1. **Never scan, glob, or read arbitrary source files or directories.**
+2. **First step for orientation:** Read `.agents/project-index.md` to identify the relevant module and directory layout.
+3. **Second step for symbols & functions:** Grep `.agents/code-map.md` for the exact function, class, or route name.
+4. **Third step for reading code:** Read ONLY the specific line range identified in `.agents/code-map.md` (never read entire files >400 lines).
+5. **After adding, moving, or renaming functions:** Regenerate the map immediately via `node .agents/gen_code_map.mjs`.
+
+Violating this order wastes context budget and violates repository execution rules.
+
+---
+
+## 0.1 AI Agent Efficiency & Execution Budget
 
 These rules apply to every AI coding agent working in this repository.
 
-### 0.1 Minimize Context Consumption
+### 0.1.1 Minimize Context Consumption
 
 - Do not scan the entire repository for individual assignments.
 - Use the existing Project Structure documentation to locate relevant files.

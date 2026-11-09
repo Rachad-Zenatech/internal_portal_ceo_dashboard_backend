@@ -15,7 +15,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Cookie, Depends, Query, WebSocket, WebSocketDisconnect, status
 from services.shared.auth_service import AUTH_COOKIE_NAME, verify_token
-from services.integration.service_status_registry import service_status_registry
+from services.integration.services.service_status_registry import service_status_registry
 from services.shared.logging_service import create_background_task
 
 logger = logging.getLogger(__name__)

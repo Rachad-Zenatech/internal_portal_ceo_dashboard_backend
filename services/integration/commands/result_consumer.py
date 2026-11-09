@@ -70,7 +70,7 @@ class ResultConsumer:
         # Business events (e.g. PURCHASE_REQUEST_STATUS_CHANGED) are not command results: forward them to the
         # browser WebSocket so tables refresh in real time. No inbox record, since repeats are legitimate.
         if not msg_type and message.get("eventType"):
-            from services.integration.service_status_registry import normalize_service_name, service_status_registry
+            from services.integration.services.service_status_registry import normalize_service_name, service_status_registry
 
             service_status_registry.publish_business_event({
                 "eventType": message["eventType"],
