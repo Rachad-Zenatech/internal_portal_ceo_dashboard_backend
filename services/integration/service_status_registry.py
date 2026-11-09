@@ -1,20 +1,21 @@
 """
 Service Status Registry
-Maintains aggregated in-memory availability state across microservice instances via MQTT.
-Handles retained status initialization, multi-instance aggregation, crash detection (LWT),
-and broker disconnect fail-safe.
+Maintains aggregated in-memory availability state across microservice instances. Updates arrive over the
+RabbitMQ message hub (RabbitMQManager forwards presence; heartbeat timeout replaces MQTT's last-will crash
+detection). The former MQTT transport is commented out below.
 """
 
 import asyncio
 import json
 import logging
 import os
-import random
-import ssl
+# MQTT transport disabled: availability and events now arrive over the RabbitMQ message hub.
+# import random
+# import ssl
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Set
 
-import paho.mqtt.client as mqtt
+# import paho.mqtt.client as mqtt
 
 logger = logging.getLogger(__name__)
 
@@ -54,16 +55,16 @@ class ServiceStatusRegistry:
         use_tls: Optional[bool] = None,
         keepalive: Optional[int] = None,
     ):
-        self.host = host or os.getenv("MQTT_HOST", "127.0.0.1")
-        self.port = int(port or os.getenv("MQTT_PORT", "1883"))
-        self.username = username or os.getenv("MQTT_USERNAME") or None
-        self.password = password or os.getenv("MQTT_PASSWORD") or None
-        self.use_tls = (
-            use_tls
-            if use_tls is not None
-            else (os.getenv("MQTT_USE_TLS", "false").lower() in ("true", "1", "yes"))
-        )
-        self.keepalive = int(keepalive or os.getenv("MQTT_KEEPALIVE_SECONDS", "15"))
+        # self.host = host or os.getenv("MQTT_HOST", "127.0.0.1")
+        # self.port = int(port or os.getenv("MQTT_PORT", "1883"))
+        # self.username = username or os.getenv("MQTT_USERNAME") or None
+        # self.password = password or os.getenv("MQTT_PASSWORD") or None
+        # self.use_tls = (
+            # use_tls
+            # if use_tls is not None
+            # else (os.getenv("MQTT_USE_TLS", "false").lower() in ("true", "1", "yes"))
+        # )
+        # self.keepalive = int(keepalive or os.getenv("MQTT_KEEPALIVE_SECONDS", "15"))
 
         # {normalized_service: {instance_id: {"status": ..., "occurredAt": ..., "reason": ..., "updatedAt": ...}}}
         self._instances: Dict[str, Dict[str, Dict[str, Any]]] = {}
@@ -71,11 +72,11 @@ class ServiceStatusRegistry:
         self._effective_status: Dict[str, str] = {}
         self._last_updated: Dict[str, str] = {}
 
-        self._client: Optional[mqtt.Client] = None
+        # self._client: Optional[mqtt.Client] = None  # MQTT client disabled
         self._loop: Optional[asyncio.AbstractEventLoop] = None
-        self._connected = False
+        # self._connected = False
         self._running = False
-        self._reconnect_task: Optional[asyncio.Task] = None
+        # self._reconnect_task: Optional[asyncio.Task] = None
 
         # Listeners for effective status changes: fn(service: str, status: str, updated_at: str)
         self._status_listeners: List[Callable[[str, str, str], Any]] = []
@@ -261,6 +262,10 @@ class ServiceStatusRegistry:
             except Exception as exc:
                 logger.warning(f"[ServiceRegistry] Error in status listener: {exc}")
 
+    def publish_business_event(self, event_data: dict):
+        """Pushes a business event (e.g. received over the RabbitMQ hub) to the registered listeners."""
+        self._notify_business_event(event_data)
+
     def _notify_business_event(self, event_data: dict):
         for listener in self._business_event_listeners:
             try:
@@ -296,142 +301,146 @@ class ServiceStatusRegistry:
         }
         self._recalculate_effective_status(normalized, now_iso)
 
-    def _on_message(self, client, userdata, message):
-        topic = message.topic
-        payload_bytes = message.payload
-        try:
-            payload = json.loads(payload_bytes.decode("utf-8"))
-        except Exception:
+    # def _on_message(self, client, userdata, message):
+        # topic = message.topic
+        # payload_bytes = message.payload
+        # try:
+            # payload = json.loads(payload_bytes.decode("utf-8"))
+        # except Exception:
             # Ignore malformed payloads safely
-            logger.debug(f"[ServiceRegistry] Ignored malformed message on {topic}")
-            return
+            # logger.debug(f"[ServiceRegistry] Ignored malformed message on {topic}")
+            # return
 
         # 1. Availability Status Topics: services/{service}/{instanceId}/status
-        if topic.startswith("services/") and topic.endswith("/status"):
-            parts = topic.split("/")
-            if len(parts) >= 4:
-                service = parts[1]
-                instance_id = parts[2]
-                status = payload.get("status")
-                if status in ["online", "offline", "unknown"]:
-                    occurred_at = payload.get("occurredAt")
-                    reason = payload.get("reason")
-                    self.update_instance_status(service, instance_id, status, occurred_at, reason)
-            return
+        # if topic.startswith("services/") and topic.endswith("/status"):
+            # parts = topic.split("/")
+            # if len(parts) >= 4:
+                # service = parts[1]
+                # instance_id = parts[2]
+                # status = payload.get("status")
+                # if status in ["online", "offline", "unknown"]:
+                    # occurred_at = payload.get("occurredAt")
+                    # reason = payload.get("reason")
+                    # self.update_instance_status(service, instance_id, status, occurred_at, reason)
+            # return
 
         # 2. Business Update Event Topics: events/{service}/{event}
-        if topic.startswith("events/"):
-            event_type = payload.get("eventType") or payload.get("event_type") or topic.replace("events/", "")
-            event_dict = {
-                "eventType": event_type,
-                "service": normalize_service_name(payload.get("service") or topic.split("/")[1]),
-                "resourceId": payload.get("resourceId") or payload.get("resource_id") or payload.get("entity_id"),
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "data": payload.get("data") or {},
-            }
-            self._notify_business_event(event_dict)
+        # if topic.startswith("events/"):
+            # event_type = payload.get("eventType") or payload.get("event_type") or topic.replace("events/", "")
+            # event_dict = {
+                # "eventType": event_type,
+                # "service": normalize_service_name(payload.get("service") or topic.split("/")[1]),
+                # "resourceId": payload.get("resourceId") or payload.get("resource_id") or payload.get("entity_id"),
+                # "timestamp": datetime.now(timezone.utc).isoformat(),
+                # "data": payload.get("data") or {},
+            # }
+            # self._notify_business_event(event_dict)
 
-    def _init_client(self):
-        client_id = f"ceo_registry_sub_{random.randint(1000, 9999)}"
-        try:
-            self._client = mqtt.Client(
-                callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
-                client_id=client_id,
-                protocol=mqtt.MQTTv311,
-            )
-        except (AttributeError, TypeError):
-            self._client = mqtt.Client(
-                client_id=client_id,
-                protocol=mqtt.MQTTv311,
-            )
+    # def _init_client(self):
+        # client_id = f"ceo_registry_sub_{random.randint(1000, 9999)}"
+        # try:
+            # self._client = mqtt.Client(
+                # callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+                # client_id=client_id,
+                # protocol=mqtt.MQTTv311,
+            # )
+        # except (AttributeError, TypeError):
+            # self._client = mqtt.Client(
+                # client_id=client_id,
+                # protocol=mqtt.MQTTv311,
+            # )
 
-        if self.username:
-            self._client.username_pw_set(self.username, self.password)
+        # if self.username:
+            # self._client.username_pw_set(self.username, self.password)
 
-        if self.use_tls:
-            context = ssl.create_default_context()
-            self._client.tls_set_context(context)
+        # if self.use_tls:
+            # context = ssl.create_default_context()
+            # self._client.tls_set_context(context)
 
-        self._client.on_connect = self._handle_connect
-        self._client.on_disconnect = self._handle_disconnect
-        self._client.on_message = self._on_message
+        # self._client.on_connect = self._handle_connect
+        # self._client.on_disconnect = self._handle_disconnect
+        # self._client.on_message = self._on_message
 
-    def _handle_connect(self, client, userdata, flags, rc, properties=None):
-        rc_val = getattr(rc, "value", rc)
-        if rc_val == 0:
-            self._connected = True
-            logger.info(f"[ServiceRegistry] Connected to MQTT broker. Subscribing to availability & event topics.")
+    # def _handle_connect(self, client, userdata, flags, rc, properties=None):
+        # rc_val = getattr(rc, "value", rc)
+        # if rc_val == 0:
+            # self._connected = True
+            # logger.info(f"[ServiceRegistry] Connected to MQTT broker. Subscribing to availability & event topics.")
             # Subscribe to all service instance statuses and business events
-            self._client.subscribe("services/+/+/status", qos=1)
-            self._client.subscribe("events/#", qos=1)
-        else:
-            self._connected = False
-            logger.warning(f"[ServiceRegistry] Connect failed with code {rc_val}")
+            # self._client.subscribe("services/+/+/status", qos=1)
+            # self._client.subscribe("events/#", qos=1)
+        # else:
+            # self._connected = False
+            # logger.warning(f"[ServiceRegistry] Connect failed with code {rc_val}")
 
-    def _handle_disconnect(self, client, userdata, flags_or_rc, rc_or_props=None, properties=None):
-        self._connected = False
-        logger.warning("[ServiceRegistry] Disconnected from MQTT broker. Marking remote service availability as UNKNOWN.")
-        now_iso = datetime.now(timezone.utc).isoformat()
+    # def _handle_disconnect(self, client, userdata, flags_or_rc, rc_or_props=None, properties=None):
+        # self._connected = False
+        # logger.warning("[ServiceRegistry] Disconnected from MQTT broker. Marking remote service availability as UNKNOWN.")
+        # now_iso = datetime.now(timezone.utc).isoformat()
         # When broker drops, notify listeners of transition to 'unknown' for all remote services
-        for s in list(self._effective_status.keys()):
-            if s not in ["ceo", "finance"]:
-                old_st = self._effective_status.get(s)
-                if old_st != "unknown":
-                    self._effective_status[s] = "unknown"
-                    self._last_updated[s] = now_iso
-                    self._notify_status_change(s, "unknown", now_iso)
+        # for s in list(self._effective_status.keys()):
+            # if s not in ["ceo", "finance"]:
+                # old_st = self._effective_status.get(s)
+                # if old_st != "unknown":
+                    # self._effective_status[s] = "unknown"
+                    # self._last_updated[s] = now_iso
+                    # self._notify_status_change(s, "unknown", now_iso)
 
     async def start(self):
         if self._running:
             return
         self._running = True
         self._loop = asyncio.get_running_loop()
-        self._init_client()
-        self._reconnect_task = asyncio.create_task(self._connection_supervisor())
+        # MQTT transport disabled: availability is fed by the RabbitMQ message hub
+        # (RabbitMQManager._forward_presence_to_status_registry calls update_instance_status).
+        # self._init_client()
+        # self._reconnect_task = asyncio.create_task(self._connection_supervisor())
+        logger.info("[ServiceRegistry] Started; availability is fed by the RabbitMQ message hub.")
 
-    async def _connection_supervisor(self):
-        attempt = 0
-        while self._running:
-            if not self._connected:
-                try:
-                    await asyncio.to_thread(
-                        self._client.connect,
-                        self.host,
-                        self.port,
-                        self.keepalive,
-                    )
-                    self._client.loop_start()
-                    for _ in range(20):
-                        if self._connected or not self._running:
-                            break
-                        await asyncio.sleep(0.1)
-                    if self._connected:
-                        attempt = 0
-                except Exception as exc:
-                    attempt += 1
-                    base_delay = min(30.0, 1.0 * (2 ** min(attempt, 5)))
-                    jitter = random.uniform(0.8, 1.2)
-                    delay = base_delay * jitter
-                    await asyncio.sleep(delay)
-                    continue
+    # async def _connection_supervisor(self):
+        # attempt = 0
+        # while self._running:
+            # if not self._connected:
+                # try:
+                    # await asyncio.to_thread(
+                        # self._client.connect,
+                        # self.host,
+                        # self.port,
+                        # self.keepalive,
+                    # )
+                    # self._client.loop_start()
+                    # for _ in range(20):
+                        # if self._connected or not self._running:
+                            # break
+                        # await asyncio.sleep(0.1)
+                    # if self._connected:
+                        # attempt = 0
+                # except Exception as exc:
+                    # attempt += 1
+                    # base_delay = min(30.0, 1.0 * (2 ** min(attempt, 5)))
+                    # jitter = random.uniform(0.8, 1.2)
+                    # delay = base_delay * jitter
+                    # await asyncio.sleep(delay)
+                    # continue
 
-            await asyncio.sleep(2.0)
+            # await asyncio.sleep(2.0)
 
     async def stop(self):
         self._running = False
-        if self._reconnect_task:
-            self._reconnect_task.cancel()
-            try:
-                await self._reconnect_task
-            except (asyncio.CancelledError, Exception):
-                pass
-        if self._client:
-            try:
-                self._client.disconnect()
-                self._client.loop_stop()
-            except Exception:
-                pass
-            self._connected = False
+        # MQTT client shutdown disabled (MQTT transport removed; availability is fed by the RabbitMQ message hub).
+        # if self._reconnect_task:
+        #     self._reconnect_task.cancel()
+        #     try:
+        #         await self._reconnect_task
+        #     except (asyncio.CancelledError, Exception):
+        #         pass
+        # if self._client:
+        #     try:
+        #         self._client.disconnect()
+        #         self._client.loop_stop()
+        #     except Exception:
+        #         pass
+        #     self._connected = False
 
 
 # Global Singleton Registry Instance

@@ -3,9 +3,9 @@ import logging
 import asyncio
 from typing import List, Dict, Any, Optional, Set
 from datetime import datetime, timezone
-from uuid import UUID
+from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException, Query, Body, Header
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from postgresql_db.database import get_conn, fetch_all, fetch_one, execute

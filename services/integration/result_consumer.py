@@ -50,6 +50,37 @@ class ResultConsumer:
     async def handle_incoming_message(self, message: Dict[str, Any]) -> None:
         """Processes an incoming result or projection event message with inbox deduplication."""
         msg_type = message.get("message_type")
+
+        # Cross-application events published by Administration / M&A (publish_ceo_event) over the hub: same
+        # ingestion as the HTTP endpoint (store, sync, notifications, WebSocket + SSE broadcast).
+        if not msg_type and message.get("event_type"):
+            from tools.integration.ceo_integration_router import CeoEventPayload, publish_event
+
+            try:
+                await publish_event(CeoEventPayload(
+                    event_type=str(message["event_type"]),
+                    source=str(message.get("source") or "unknown"),
+                    entity_id=str(message.get("entity_id") or ""),
+                    data=message.get("data") or {},
+                ))
+            except Exception as exc:
+                logger.warning(f"Failed ingesting hub event {message.get('event_type')}: {exc}")
+            return
+
+        # Business events (e.g. PURCHASE_REQUEST_STATUS_CHANGED) are not command results: forward them to the
+        # browser WebSocket so tables refresh in real time. No inbox record, since repeats are legitimate.
+        if not msg_type and message.get("eventType"):
+            from services.integration.service_status_registry import normalize_service_name, service_status_registry
+
+            service_status_registry.publish_business_event({
+                "eventType": message["eventType"],
+                "service": normalize_service_name(message.get("service") or "administration"),
+                "resourceId": message.get("resourceId"),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "data": message.get("data") or {},
+            })
+            return
+
         cmd_id = message.get("command_id")
         msg_id = message.get("correlation_id") or cmd_id or str(message.get("resource_id", "unknown"))
         source_svc = (message.get("source_service") or "unknown").lower()

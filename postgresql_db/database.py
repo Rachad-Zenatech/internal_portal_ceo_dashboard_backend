@@ -2,6 +2,7 @@ import os
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from uuid import UUID
 import asyncpg
 
 # Optional dotenv import for loading .env and local overrides during development
@@ -12,8 +13,121 @@ try:
     load_dotenv(os.path.join(_root_dir, ".env.local"), override=True)
 except ImportError:
     pass
-# Global reference to the connection pools
-_pool: asyncpg.Pool | None = None
+
+
+def _resolve_rls_identity(
+    user_id: str | UUID | None = None,
+    is_super_admin: bool | None = None,
+) -> tuple[str, bool]:
+    """Resolve verified user identity and super-admin status from explicit parameters or auth ContextVars."""
+    uid_val = user_id
+    super_val = is_super_admin
+    if uid_val is None or super_val is None:
+        try:
+            from services.auth_service import (
+                current_user_id_ctx,
+                current_user_is_super_admin_ctx,
+            )
+            if uid_val is None:
+                uid_val = current_user_id_ctx.get()
+            if super_val is None:
+                super_val = current_user_is_super_admin_ctx.get()
+        except Exception:
+            pass
+    uid_str = str(uid_val).strip() if uid_val is not None else ""
+    return uid_str, bool(super_val)
+
+
+async def set_rls_context(
+    conn: asyncpg.Connection,
+    user_id: str | UUID | None = None,
+    *,
+    is_super_admin: bool | None = None,
+    is_local: bool = True,
+) -> None:
+    """Supply the verified user identity to PostgreSQL Row-Level Security (RLS) using bound parameters.
+
+    When `is_local=True` (default), settings apply only to the current transaction (`BEGIN ... COMMIT`)
+    and are automatically cleared when the transaction ends.
+    """
+    uid_str, super_flag = _resolve_rls_identity(user_id, is_super_admin)
+    await conn.execute(
+        "SELECT set_config('app.user_id', $1, $3), set_config('app.is_super_admin', $2, $3)",
+        uid_str,
+        "true" if super_flag else "false",
+        bool(is_local),
+    )
+
+
+class _RLSPoolAcquireContext:
+    """Wraps asyncpg PoolAcquireContext to propagate verified RLS context on connection checkout."""
+
+    __slots__ = ("_acquire_ctx", "_conn", "_applied")
+
+    def __init__(self, acquire_ctx):
+        self._acquire_ctx = acquire_ctx
+        self._conn = None
+        self._applied = False
+
+    def __await__(self):
+        return self._acquire_ctx.__await__()
+
+    async def __aenter__(self) -> asyncpg.Connection:
+        conn = await self._acquire_ctx.__aenter__()
+        self._conn = conn
+        uid_str, super_flag = _resolve_rls_identity()
+        if uid_str:
+            try:
+                await conn.execute(
+                    "SELECT set_config('app.user_id', $1, false), set_config('app.is_super_admin', $2, false)",
+                    uid_str,
+                    "true" if super_flag else "false",
+                )
+                self._applied = True
+            except Exception:
+                pass
+        return conn
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if self._applied and self._conn is not None:
+            # Never let a user identity leak to the next borrower of this pooled connection
+            try:
+                await self._conn.execute(
+                    "SELECT set_config('app.user_id', '', false), set_config('app.is_super_admin', 'false', false)"
+                )
+            except Exception:
+                pass
+        return await self._acquire_ctx.__aexit__(exc_type, exc_val, exc_tb)
+
+
+class PoolWrapper:
+    """Wraps an asyncpg.Pool so every `acquire()` caller gets the verified RLS context applied."""
+
+    def __init__(self, pool: asyncpg.Pool):
+        self._pool = pool
+
+    def acquire(self, *, timeout=None):
+        return _RLSPoolAcquireContext(self._pool.acquire(timeout=timeout))
+
+    def __await__(self):
+        # Legacy `await get_pool()` call sites: resolve the inner pool and hand back this wrapper
+        async def _resolve():
+            await self._pool
+            return self
+        return _resolve().__await__()
+
+    async def close(self):
+        return await self._pool.close()
+
+    def terminate(self):
+        return self._pool.terminate()
+
+    def __getattr__(self, name):
+        return getattr(self._pool, name)
+
+
+# Global reference to the connection pools (_admin_pool stays a raw, context-free asyncpg pool)
+_pool: PoolWrapper | None = None
 _admin_pool: asyncpg.Pool | None = None
 logger = logging.getLogger(__name__)
 
@@ -40,7 +154,7 @@ async def create_pool():
         retries = 5
         for attempt in range(retries):
             try:
-                _pool = await asyncpg.create_pool(
+                raw_pool = await asyncpg.create_pool(
                     dsn=os.environ["DATABASE_URL"],
                     ssl=use_ssl,
                     min_size=min_size,
@@ -51,6 +165,7 @@ async def create_pool():
                     statement_cache_size=0,
                     server_settings={"application_name": "ceo_dashboard"},
                 )
+                _pool = PoolWrapper(raw_pool)
                 break
             except (ConnectionResetError, asyncpg.PostgresConnectionError, asyncpg.CannotConnectNowError, OSError, Exception) as e:
                 if attempt < retries - 1:
@@ -158,19 +273,47 @@ def get_admin_pool() -> asyncpg.Pool:
     if _admin_pool is not None:
         return _admin_pool
     if _pool is not None:
-        return _pool
+        # Fallback stays context-free: hand back the raw pool, not the RLS wrapper
+        return _pool._pool
     raise RuntimeError("Database pool not initialised. Call create_pool() first.")
+
+
+@asynccontextmanager
+async def _acquire_with_rls(pool: PoolWrapper):
+    async with pool.acquire(timeout=10.0) as conn:
+        uid_str, super_flag = _resolve_rls_identity()
+        if uid_str:
+            async with conn.transaction():
+                await set_rls_context(conn, uid_str, is_super_admin=super_flag, is_local=True)
+                yield conn
+        else:
+            yield conn
+
+
+@asynccontextmanager
+async def get_rls_conn(
+    user_id: str | UUID | None = None,
+    *,
+    is_super_admin: bool | None = None,
+):
+    """Acquire a pooled connection, start a transaction, and bind `app.user_id` locally to that transaction."""
+    pool = get_pool()
+    async with pool.acquire(timeout=10.0) as conn:
+        async with conn.transaction():
+            await set_rls_context(conn, user_id, is_super_admin=is_super_admin, is_local=True)
+            yield conn
+
 
 @asynccontextmanager
 async def get_conn():
     pool = get_pool()
     try:
-        async with pool.acquire(timeout=10.0) as conn:
+        async with _acquire_with_rls(pool) as conn:
             yield conn
     except (asyncpg.PostgresConnectionError, ConnectionResetError, asyncpg.CannotConnectNowError) as exc:
         logger.warning(f"Database connection error ({type(exc).__name__}: {exc}), resetting pool...")
         new_pool = await reset_pool()
-        async with new_pool.acquire(timeout=10.0) as conn:
+        async with _acquire_with_rls(new_pool) as conn:
             yield conn
 
 

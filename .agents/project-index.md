@@ -14,19 +14,20 @@ For detailed function and route definitions, see `.agents/code-map.md`.
 - mcp_tools/uploads/upload_files.py (36 lines) - upload files (uploads)
 - models/notifications/notification_model.py (29 lines) - notification model (notifications)
 - models/shared/rbac_model.py (208 lines) - rbac model (shared)
-- postgresql_db/database.py (192 lines) - Optional dotenv import for loading .env and local overrides during development
+- postgresql_db/database.py (335 lines) - Optional dotenv import for loading .env and local overrides during development
 - postgresql_db/schemas/cross_service_schema.py (346 lines) - Cross-Service Persistence Schema Creates tables for: 1.
 - postgresql_db/schemas/notifications_schema.py (46 lines) - notifications schema (schemas)
 - postgresql_db/schemas/setup_ai_observability_schema.py (93 lines) - AI observability, caching and usage limits: trace spans for every AI step (model calls, embeddings, tool calls, guard checks, cache looku...
 - postgresql_db/schemas/setup_pbac_schema.py (258 lines) - setup pbac schema (schemas)
+- postgresql_db/setup_rls_security.py (309 lines) - RDS PostgreSQL Role-Based Access Control & Row-Level Security (RLS) Setup for the CEO Dashboard backend.
 - run_mqtt_broker.py (48 lines) - Local MQTT Broker Runner (Zero External Dependencies) Runs a standalone MQTT broker on 127.0.0.1:1883 using amqtt.
-- server.py (530 lines) - server.py - CEO Executive Dashboard Backend Server
+- server.py (597 lines) - server.py - CEO Executive Dashboard Backend Server
 - services/ai/ai_guardrails.py (249 lines) - AI guardrails: screening what goes into the model and redacting personal data from what comes out.
 - services/ai/ai_observability.py (367 lines) - AI observability: a trace span for every model call, embedding, retrieval, cache lookup, guard check and tool call, plus a prompt log of ...
 - services/ai/ai_usage_service.py (141 lines) - AI Usage Limits Caps how often Gemini runs, so one person (or a stuck loop) can't use up the provider quota or run up cost.
 - services/dashboard/dashboard_service.py (323 lines) - dashboard service (dashboard)
 - services/integration/admin_command_processor.py (341 lines) - Administration Command Processor Consumes and executes commands from the 'administration.commands' queue, invokes authoritative domain lo...
-- services/integration/admin_integration_service.py (1256 lines) - admin integration service (integration)
+- services/integration/admin_integration_service.py (1268 lines) - admin integration service (integration)
 - services/integration/command_service.py (366 lines) - Generic Command Service Validates, persists, and orchestrates asynchronous business commands across all connected services.
 - services/integration/connectors/admin_connector.py (225 lines) - Administration Service Connector Handles Administration Portal domain commands, results, and local projection synchronization.
 - services/integration/connectors/base_connector.py (131 lines) - Base Service Connector Defines the abstract interface and standard envelopes for service connectors in the CEO Dashboard.
@@ -37,17 +38,17 @@ For detailed function and route definitions, see `.agents/code-map.md`.
 - services/integration/ma_command_processor.py (181 lines) - M&A Command Processor Consumes and executes commands from the 'ma.commands' queue, invokes authoritative deal/pipeline domain logic, and ...
 - services/integration/outbox_publisher.py (192 lines) - Transactional Outbox Publisher Background worker that polls pending outbox entries, publishes them to RabbitMQ with publisher confirmatio...
 - services/integration/projection_service.py (155 lines) - Projection Service Serves local filtered read-models with freshness metadata, decoupling UI reads from remote service availability.
-- services/integration/result_consumer.py (185 lines) - Result & Event Consumer Consumes authoritative command results and projection events from connected services, deduplicates via service_in...
-- services/integration/service_status_registry.py (439 lines) - Service Status Registry Maintains aggregated in-memory availability state across microservice instances via MQTT.
+- services/integration/result_consumer.py (216 lines) - Result & Event Consumer Consumes authoritative command results and projection events from connected services, deduplicates via service_in...
+- services/integration/service_status_registry.py (448 lines) - Service Status Registry Maintains aggregated in-memory availability state across microservice instances.
 - services/microsoft_graph/graph_service.py (155 lines) - graph service (microsoft graph)
 - services/notifications/embedded_broker.py (99 lines) - Embedded MQTT Broker Helper Automatically starts an in-process MQTT broker on 0.0.0.0:1883 during FastAPI startup if no external broker i...
 - services/notifications/mqtt_presence.py (244 lines) - MQTT Service Presence Component Provides automated online/offline state publishing with MQTT Last Will and Testament (LWT), retained mess...
 - services/notifications/notification_service.py (222 lines) - notification service (notifications)
-- services/notifications/rabbitmq_service.py (408 lines) - RabbitMQ Service & Topology Manager Provides resilient connection management, topology declaration, publisher confirmations, and dead-let...
+- services/notifications/rabbitmq_service.py (1158 lines) - RabbitMQ Service & Topology Manager Provides resilient connection management, topology declaration, publisher confirmations, and dead-let...
 - services/reports/report_service.py (388 lines) - services/reports/report_service.py
-- services/shared/auth_service.py (420 lines) - Create token
+- services/shared/auth_service.py (424 lines) - Create token
 - services/shared/cache_service.py (101 lines) - Cache Management and Invalidation Service Provides local in-memory caching utilities and asynchronous cache invalidation propagation acro...
-- services/shared/logging_service.py (175 lines) - Structured application logging suitable for container stdout and CloudWatch Logs.
+- services/shared/logging_service.py (179 lines) - Structured application logging suitable for container stdout and CloudWatch Logs.
 - services/shared/rbac_service.py (558 lines) - Utility for audit logging
 - services/shared/service_security_policy.py (201 lines) - Enterprise Application Security & Scope Authorization Policy Defines the strict Application-to-Application Access Matrix (Machine-to-Mach...
 - services/uploads/s3_storage_service.py (148 lines) - s3 storage service (uploads)

@@ -375,6 +375,18 @@ def _parse_purchase_request_item(r: Dict[str, Any]) -> Dict[str, Any]:
         "attachments": r.get("attachments") or [],
         "pending_sync": bool(r.get("pending_sync", False)),
         "approval_note": r.get("approval_note"),
+        "request_date": str(r.get("request_date") or "") or None,
+        "payment_method": r.get("payment_method"),
+        # After-tax amount decided by the Administration server (passed through, never recalculated here)
+        "amount_after_tax": r.get("amount_after_tax"),
+        "tax_rate": r.get("tax_rate"),
+        "tax_source": r.get("tax_source"),
+        "level_1_approver_name": r.get("level_1_approver_name"),
+        "level_1_approved_at": r.get("level_1_approved_at"),
+        "level_2_approver_name": r.get("level_2_approver_name"),
+        "level_2_approved_at": r.get("level_2_approved_at"),
+        "requires_second_level": bool(r.get("requires_second_level", False)),
+        "current_approval_level": r.get("current_approval_level"),
     }
     _enrich_purchase_request_multi_currency(parsed)
     return parsed

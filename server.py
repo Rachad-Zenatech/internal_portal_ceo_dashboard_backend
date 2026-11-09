@@ -98,6 +98,14 @@ async def lifespan(app: FastAPI):
         except Exception as ai_err:
             logger.warning(f"AI observability schema setup note: {ai_err}")
 
+        # Apply RDS permission roles and Row-Level Security policies after all tables exist
+        try:
+            from postgresql_db.setup_rls_security import ensure_rls_security
+            async with get_pool().acquire() as rls_conn:
+                await ensure_rls_security(rls_conn)
+        except Exception as rls_err:
+            logger.warning(f"RDS RLS security setup skipped or deferred: {rls_err}")
+
         # Initialize Connectors package
         import services.integration.connectors
     except Exception:
@@ -113,18 +121,18 @@ async def lifespan(app: FastAPI):
     trace_task.add_done_callback(
         partial(log_background_task_result, task_name="ai-trace-writer")
     )
-    # Initialize Event-Driven MQTT Engine, Presence & Status Registry
-    from services.notifications.embedded_broker import ensure_mqtt_broker_running, stop_embedded_mqtt_broker
-    from services.notifications.mqtt_presence import MqttServicePresence
+    # Service Status Registry: availability now arrives over the RabbitMQ message hub (see rabbitmq_service).
     from services.integration.service_status_registry import service_status_registry
 
-    await ensure_mqtt_broker_running()
-
-    ceo_presence = MqttServicePresence(
-        service_name=os.getenv("SERVICE_NAME", "ceo-api"),
-        instance_id=os.getenv("SERVICE_INSTANCE_ID", "ceo-api-01"),
-    )
-    await ceo_presence.start()
+    # MQTT engine disabled: presence flows over the RabbitMQ message hub instead.
+    # from services.notifications.embedded_broker import ensure_mqtt_broker_running, stop_embedded_mqtt_broker
+    # from services.notifications.mqtt_presence import MqttServicePresence
+    # await ensure_mqtt_broker_running()
+    # ceo_presence = MqttServicePresence(
+    #     service_name=os.getenv("SERVICE_NAME", "ceo-api"),
+    #     instance_id=os.getenv("SERVICE_INSTANCE_ID", "ceo-api-01"),
+    # )
+    # await ceo_presence.start()
     await service_status_registry.start()
 
     # Initialize Asynchronous Cross-Service Messaging & Workers
@@ -152,9 +160,9 @@ async def lifespan(app: FastAPI):
         await admin_command_processor.stop()
         await ma_command_processor.stop()
         await rabbitmq_manager.close()
-        await ceo_presence.stop()
+        # await ceo_presence.stop()
         await service_status_registry.stop()
-        await stop_embedded_mqtt_broker()
+        # await stop_embedded_mqtt_broker()
         await asyncio.gather(sync_task, trace_task, return_exceptions=True)
         await ai_observability.flush()
         await close_pool()
@@ -299,6 +307,54 @@ app.add_middleware(
 )
 
 
+@app.get("/api/message-hub/status", dependencies=authenticated)
+async def message_hub_status(test: bool = False):
+    """Live RabbitMQ Message Hub snapshot for the topbar servers dropdown (same contract as the other portals)."""
+    from services.notifications.rabbitmq_service import rabbitmq_manager
+
+    return await rabbitmq_manager.get_hub_live_status(active_test=test)
+
+
+@app.post("/api/message-hub/test", dependencies=authenticated)
+async def message_hub_test():
+    from services.notifications.rabbitmq_service import rabbitmq_manager
+
+    return await rabbitmq_manager.get_hub_live_status(active_test=True)
+
+
+@app.get("/api/message-hub/stream", dependencies=authenticated)
+async def message_hub_stream(request: Request):
+    """SSE: an initial snapshot, then a new snapshot whenever any server's status changes."""
+    import json as _json
+    from services.notifications.rabbitmq_service import rabbitmq_manager
+
+    async def _event_generator():
+        q = rabbitmq_manager.subscribe_sse()
+        try:
+            initial = await rabbitmq_manager.get_hub_live_status(active_test=False)
+            yield f"data: {_json.dumps(initial)}\n\n"
+            while not rabbitmq_manager._shutting_down:
+                if await request.is_disconnected():
+                    break
+                try:
+                    payload = await asyncio.wait_for(q.get(), timeout=10.0)
+                    if payload is None or rabbitmq_manager._shutting_down:
+                        break
+                    yield f"data: {_json.dumps(payload)}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": keep-alive\n\n"
+        except asyncio.CancelledError:
+            pass
+        finally:
+            rabbitmq_manager.unsubscribe_sse(q)
+
+    return StreamingResponse(
+        _event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+    )
+
+
 @app.get("/api/integration/status")
 @app.get("/api/integration-status")
 async def api_ceo_integration_status():
@@ -306,8 +362,19 @@ async def api_ceo_integration_status():
     from services.integration.integration_resilience import admin_circuit_breaker, ma_circuit_breaker
     import httpx
 
+    # Message Hub is the source of truth for peer presence (replaces MQTT)
+    hub_status: dict = {}
+    try:
+        from services.notifications.rabbitmq_service import rabbitmq_manager
+        snap = await rabbitmq_manager.get_hub_live_status(active_test=False)
+        for s in snap.get("servers", []):
+            hub_status[s.get("id")] = "offline" if s.get("status") == "offline" else "online"
+    except Exception as exc:
+        logger.warning(f"Message hub snapshot failed, falling back to direct peer probes: {exc}")
+        hub_status = {}
+
     # 1. Admin Service status
-    admin_status = service_status_registry.get_service_status("admin")
+    admin_status = hub_status.get("administration") or service_status_registry.get_service_status("admin")
     if admin_status == "unknown":
         admin_base = os.getenv("ADMIN_PORTAL_API_URL", os.getenv("ADMIN_API_BASE", "http://127.0.0.1:8002")).rstrip("/")
         try:
@@ -326,7 +393,7 @@ async def api_ceo_integration_status():
         admin_status = "offline"
 
     # 2. M&A Service status
-    ma_status = service_status_registry.get_service_status("ma")
+    ma_status = hub_status.get("ma") or service_status_registry.get_service_status("ma")
     if ma_status == "unknown":
         ma_base = os.getenv("MA_PORTAL_API_URL", os.getenv("MA_API_BASE", "http://127.0.0.1:8003")).rstrip("/")
         try:

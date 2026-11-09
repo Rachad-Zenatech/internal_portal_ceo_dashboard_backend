@@ -98,7 +98,21 @@ How to use: check `.agents/project-index.md` first to locate the file, then insp
     - `Config` (class)
 - `RolePermissionGroupsUpdate` (class)
 
-## postgresql_db/database.py (192 lines) - Optional dotenv import for loading .env and local overrides during development
+## postgresql_db/database.py (335 lines) - Optional dotenv import for loading .env and local overrides during development
+- `_resolve_rls_identity` (def) - Resolve verified user identity and super-admin status from explicit parameters or auth ContextVars.
+- `set_rls_context` (def) - Supply the verified user identity to PostgreSQL Row-Level Security (RLS) using bound parameters.
+- `_RLSPoolAcquireContext` (class) - Wraps asyncpg PoolAcquireContext to propagate verified RLS context on connection checkout.
+    - `__init__` (def)
+    - `__await__` (def)
+    - `__aenter__` (def)
+    - `__aexit__` (def)
+- `PoolWrapper` (class) - Wraps an asyncpg.Pool so every `acquire()` caller gets the verified RLS context applied.
+    - `__init__` (def)
+    - `acquire` (def)
+    - `__await__` (def)
+    - `close` (def)
+    - `terminate` (def)
+    - `__getattr__` (def)
 - `_resolve_ssl_mode` (def)
 - `create_pool` (def) - Creates the connection pool if it doesn't exist yet, then returns it.
 - `create_admin_pool` (def) - Creates the Admin database connection pool.
@@ -107,6 +121,8 @@ How to use: check `.agents/project-index.md` first to locate the file, then insp
 - `reset_pool` (def) - Drop the current pool and create a fresh one after fatal connection failures.
 - `get_pool` (def)
 - `get_admin_pool` (def)
+- `_acquire_with_rls` (def)
+- `get_rls_conn` (def) - Acquire a pooled connection, start a transaction, and bind `app.user_id` locally to that transaction.
 - `get_conn` (def)
 - `fetch_all` (def)
 - `fetch_one` (def)
@@ -126,10 +142,14 @@ How to use: check `.agents/project-index.md` first to locate the file, then insp
 ## postgresql_db/schemas/setup_pbac_schema.py (258 lines) - setup pbac schema (schemas)
 - `setup` (def)
 
+## postgresql_db/setup_rls_security.py (309 lines) - RDS PostgreSQL Role-Based Access Control & Row-Level Security (RLS) Setup for the CEO Dashboard backend.
+- `ensure_rls_security` (def) - Apply RDS PostgreSQL permission roles and Row-Level Security (RLS) policies idempotently.
+    - `_main` (def)
+
 ## run_mqtt_broker.py (48 lines) - Local MQTT Broker Runner (Zero External Dependencies) Runs a standalone MQTT broker on 127.0.0.1:1883 using amqtt.
 - `start_broker` (def)
 
-## server.py (530 lines) - server.py - CEO Executive Dashboard Backend Server
+## server.py (597 lines) - server.py - CEO Executive Dashboard Backend Server
 - `lifespan` (def)
 - `MessageItem` (class)
 - `ChatRequest` (class)
@@ -137,6 +157,10 @@ How to use: check `.agents/project-index.md` first to locate the file, then insp
 - `root` (def) [GET /]
 - `health_live` (def) [GET /health/live]
 - `health_ready` (def) [GET /health/ready]
+- `message_hub_status` (def) [GET /api/message-hub/status] - Live RabbitMQ Message Hub snapshot for the topbar servers dropdown (same contract as the other portals).
+- `message_hub_test` (def) [POST /api/message-hub/test]
+- `message_hub_stream` (def) [GET /api/message-hub/stream] - SSE: an initial snapshot, then a new snapshot whenever any server's status changes.
+    - `_event_generator` (def)
 - `api_ceo_integration_status` (def) [GET /api/integration/status, GET /api/integration-status]
 - `security_headers` (def)
 - `_slow_request_threshold_ms` (def)
@@ -218,7 +242,7 @@ How to use: check `.agents/project-index.md` first to locate the file, then insp
     - `recover_unprocessed_commands` (def) - Finds any commands in QUEUED or PROCESSING and processes them once admin is online.
     - `process_command` (def) - Dispatches an Administration command to the domain business logic.
 
-## services/integration/admin_integration_service.py (1256 lines) - admin integration service (integration)
+## services/integration/admin_integration_service.py (1268 lines) - admin integration service (integration)
 - `_resolve_admin_user_info` (def)
 - `_resolve_admin_user_id` (def)
 - `_generate_service_token` (def)
@@ -378,14 +402,14 @@ How to use: check `.agents/project-index.md` first to locate the file, then insp
     - `list_projections` (def) - Lists multiple projected entities of a given resource type with freshness metadata.
     - `upsert_projection` (def) - Updates or creates a projected record in the database.
 
-## services/integration/result_consumer.py (185 lines) - Result & Event Consumer Consumes authoritative command results and projection events from connected services, deduplicates via service_in...
+## services/integration/result_consumer.py (216 lines) - Result & Event Consumer Consumes authoritative command results and projection events from connected services, deduplicates via service_in...
 - `ResultConsumer` (class)
     - `__init__` (def)
     - `start` (def) - Starts subscribing to result and event queues.
     - `stop` (def)
     - `handle_incoming_message` (def) - Processes an incoming result or projection event message with inbox deduplication.
 
-## services/integration/service_status_registry.py (439 lines) - Service Status Registry Maintains aggregated in-memory availability state across microservice instances via MQTT.
+## services/integration/service_status_registry.py (448 lines) - Service Status Registry Maintains aggregated in-memory availability state across microservice instances.
 - `normalize_service_name` (def)
 - `ServiceStatusRegistry` (class) - Central in-memory registry of microservice instance availability.
     - `__init__` (def)
@@ -398,14 +422,10 @@ How to use: check `.agents/project-index.md` first to locate the file, then insp
     - `get_all_statuses` (def) - Returns snapshot of current service statuses for initial page hydration.
     - `_recalculate_effective_status` (def)
     - `_notify_status_change` (def)
+    - `publish_business_event` (def) - Pushes a business event (e.g.
     - `_notify_business_event` (def)
     - `update_instance_status` (def) - Directly updates instance status (used by MQTT message handler and tests).
-    - `_on_message` (def)
-    - `_init_client` (def)
-    - `_handle_connect` (def)
-    - `_handle_disconnect` (def)
     - `start` (def)
-    - `_connection_supervisor` (def)
     - `stop` (def)
 
 ## services/microsoft_graph/graph_service.py (155 lines) - graph service (microsoft graph)
@@ -450,17 +470,25 @@ How to use: check `.agents/project-index.md` first to locate the file, then insp
 - `sync_approval_notifications` (def) - Ensures unread notifications exist for all pending purchase requests that require approval.
 - `sync_ma_loi_accepted_notifications` (def) - Ensures unread executive notifications exist for all deals where an LOI was accepted.
 
-## services/notifications/rabbitmq_service.py (408 lines) - RabbitMQ Service & Topology Manager Provides resilient connection management, topology declaration, publisher confirmations, and dead-let...
+## services/notifications/rabbitmq_service.py (1158 lines) - RabbitMQ Service & Topology Manager Provides resilient connection management, topology declaration, publisher confirmations, and dead-let...
 - `_sanitize_amqp_url` (def) - Mask password from AMQP URLs to prevent logging credentials.
+- `_explicit_url_parts` (def) - Parsed RABBITMQ_URL, or None if unset / pointing at host.docker.internal (ignored, as before).
 - `get_rabbitmq_host` (def)
 - `get_rabbitmq_port` (def)
+- `get_rabbitmq_management_port` (def)
+- `get_hub_status_cache_ttl` (def) - Seconds a hub snapshot is reused (0 disables caching).
+- `hub_peer_http_probe_enabled` (def) - Whether peers must also pass an HTTP /health/live probe to count as online (default off: hub presence is authoritative).
 - `get_rabbitmq_user` (def)
 - `get_rabbitmq_password` (def)
+- `get_rabbitmq_vhost` (def) - Virtual host: from RABBITMQ_URL path, else RABBITMQ_VHOST / RABBITMQ_DEFAULT_VHOST, else '/'.
+- `_vhost_url_part` (def)
 - `get_rabbitmq_url` (def)
 - `get_commands_exchange` (def)
 - `get_events_exchange` (def)
 - `get_dlx_exchange` (def)
+- `get_presence_exchange` (def)
 - `get_prefetch_count` (def)
+- `_build_hub_application` (def)
 - `InMemoryMessageBroker` (class) - In-memory fallback & mock broker for unit testing and offline development
     - `__init__` (def)
     - `get_queue` (def)
@@ -473,6 +501,23 @@ How to use: check `.agents/project-index.md` first to locate the file, then insp
     - `is_connected` (def)
     - `connect` (def) - Attempts to connect to RabbitMQ broker and initialize topology.
     - `_setup_topology` (def) - Declares durable exchanges, queues, DLX, and bindings.
+    - `_setup_hub_streams` (def) - Declares RabbitMQ Streams.
+    - `_forward_presence_to_status_registry` (def) - Feeds a service's own presence report into the Integration Matrix registry (replaces MQTT presence).
+    - `_expire_stale_presence` (def) - A service whose hub heartbeat (every 5s) stops is marked offline, replacing MQTT's last-will message.
+    - `_handle_incoming_presence_payload` (def)
+    - `_start_hub_consumers` (def) - Consumers for this server's command queue, the presence stream, and an instant status-notify queue.
+    - `subscribe_sse` (def)
+    - `unsubscribe_sse` (def)
+    - `_broadcast_to_sse` (def)
+    - `notify_shutting_down` (def) - Wakes all SSE streams so Uvicorn exits without hanging, and announces offline to peers.
+    - `install_uvicorn_shutdown_hook` (def) - Hook Uvicorn's Server.handle_exit so SIGINT/SIGTERM closes SSE streams and broadcasts offline.
+    - `broadcast_server_status_update` (def) - Publishes a server online/offline message on the presence exchange so every peer updates its registry.
+    - `_publish_presence_event` (def)
+    - `_presence_heartbeat_loop` (def) - Announces this server's live status every 5 seconds.
+    - `_peer_status_monitor_loop` (def) - Every 2.5s re-evaluates all hub servers; pushes SSE updates and announces peers that dropped/returned.
+    - `_run_active_queue_and_stream_probe` (def) - Round-trips a message through a temporary queue and publishes a healthcheck event to the events exchange.
+    - `get_hub_live_status` (def) - Live Message Hub snapshot, cached for HUB_STATUS_CACHE_TTL seconds with single-flight refresh.
+    - `_build_hub_live_status` (def) - Uncached Message Hub snapshot (same shape as the other portal backends) for the topbar servers dropdown.
     - `publish_message` (def) - Publishes a persistent message with publisher confirmations.
     - `consume_queue` (def) - Subscribes to a queue and processes messages with manual acknowledgments.
     - `_consume_in_memory` (def)
@@ -485,7 +530,7 @@ How to use: check `.agents/project-index.md` first to locate the file, then insp
 - `generate_excel_reconciliation_report` (def)
     - `find_row_by_label` (def)
 
-## services/shared/auth_service.py (420 lines) - Create token
+## services/shared/auth_service.py (424 lines) - Create token
 - `create_access_token` (def)
 - `verify_token` (def)
 - `get_my_permissions` (def)
@@ -513,7 +558,7 @@ How to use: check `.agents/project-index.md` first to locate the file, then insp
 - `remove_invalidation_listener` (def) - Removes a registered invalidation listener.
 - `emit_cache_invalidation` (def) - Broadcasts a cache invalidation event to local stores, registered listeners,
 
-## services/shared/logging_service.py (175 lines) - Structured application logging suitable for container stdout and CloudWatch Logs.
+## services/shared/logging_service.py (179 lines) - Structured application logging suitable for container stdout and CloudWatch Logs.
 - `JsonFormatter` (class) - Emit one compact JSON object per line for CloudWatch Logs Insights.
     - `format` (def)
 - `AmqttCancellationFilter` (class) - Suppresses benign CancelledError logs emitted by amqtt during shutdown.

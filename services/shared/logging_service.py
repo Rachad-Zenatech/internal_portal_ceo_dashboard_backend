@@ -101,6 +101,10 @@ def configure_logging() -> None:
         child.handlers.clear()
         child.propagate = True
 
+    # httpx logs every request at INFO (health/management polling floods the log); keep warnings and errors
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+
     # Suppress benign shutdown task cancellations logged as errors by amqtt
     amqtt_filter = AmqttCancellationFilter()
     for name in ("amqtt", "amqtt.broker", "amqtt.broker.plugins"):

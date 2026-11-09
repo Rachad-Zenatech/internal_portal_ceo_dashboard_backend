@@ -17,6 +17,7 @@ AUTH_COOKIE_NAME = "zenatech_access_token"
 AUTH_COOKIE_MAX_AGE = max(300, int(os.getenv("AUTH_TOKEN_TTL_SECONDS", "7200")))
 
 current_user_id_ctx = contextvars.ContextVar("current_user_id", default=None)
+current_user_is_super_admin_ctx = contextvars.ContextVar("current_user_is_super_admin", default=False)
 
 
 
@@ -323,7 +324,7 @@ async def get_current_user_id_dependency(
     except (KeyError, TypeError, ValueError) as exc:
         raise HTTPException(status_code=401, detail="Invalid token") from exc
     user = await fetch_one(
-        "SELECT id, last_activity_at, last_logout_at FROM users WHERE id = $1 AND deleted_at IS NULL AND is_active = true",
+        "SELECT id, is_super_admin, last_activity_at, last_logout_at FROM users WHERE id = $1 AND deleted_at IS NULL AND is_active = true",
         user_id,
     )
     if not user:
@@ -345,6 +346,9 @@ async def get_current_user_id_dependency(
     from postgresql_db.database import execute
     await execute("UPDATE users SET last_activity_at = now() WHERE id = $1", user_id)
 
+    # Verified identity for PostgreSQL RLS (from the validated token + DB row, never request input)
+    current_user_id_ctx.set(user_id)
+    current_user_is_super_admin_ctx.set(bool(user.get("is_super_admin")))
     return user_id
 
 def requireNavigationAccess(navigationCode: str, actionCode: str = 'VIEW'):
