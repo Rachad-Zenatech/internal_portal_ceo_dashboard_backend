@@ -210,7 +210,7 @@ How to use: check `.agents/project-index.md` first to locate the file, then insp
 - `get_recent_transactions` (def)
 - `get_dashboard_overview` (def)
 
-## services/integration/admin_command_processor.py (341 lines) - Administration Command Processor Consumes and executes commands from the 'administration.commands' queue, invokes authoritative domain lo...
+## services/integration/commands/admin_command_processor.py (341 lines) - Administration Command Processor Consumes and executes commands from the 'administration.commands' queue, invokes authoritative domain lo...
 - `AdminCommandProcessor` (class)
     - `__init__` (def)
     - `start` (def)
@@ -218,39 +218,34 @@ How to use: check `.agents/project-index.md` first to locate the file, then insp
     - `recover_unprocessed_commands` (def) - Finds any commands in QUEUED or PROCESSING and processes them once admin is online.
     - `process_command` (def) - Dispatches an Administration command to the domain business logic.
 
-## services/integration/admin_integration_service.py (1256 lines) - admin integration service (integration)
-- `_resolve_admin_user_info` (def)
-- `_resolve_admin_user_id` (def)
-- `_generate_service_token` (def)
-- `_extract_port` (def)
-- `_map_to_ceo_approval_status` (def)
-- `_enrich_purchase_request_multi_currency` (def)
-- `_parse_purchase_request_item` (def)
-- `check_portals_health` (def)
-- `get_portal_health` (def) - Returns real-time health and connectivity metrics for all integrated applications
-- `_fetch_admin_raw_requests` (def)
-- `_persist_purchase_requests_to_projection` (def) - Upserts all requests into PostgreSQL ceo_service_projections for durable offline availability.
-- `_get_projected_purchase_requests` (def) - Reads purchasing requests from PostgreSQL ceo_service_projections with pending command overlay.
-- `sync_admin_records_from_source` (def) - Pulls fresh records from Admin Portal, updates the local PostgreSQL projection store,
-- `get_pending_purchase_requests` (def) - Fetches pending purchasing requests.
-- `get_completed_purchase_requests` (def) - Fetches completed / approved purchasing requests.
-- `get_purchase_request_detail` (def) - Fetches full request details.
-- `execute_purchase_transition` (def) - Executes approval or rejection of a purchase request via Administration Portal.
-- `execute_batch_purchase_transition` (def) - Executes batch approval or rejection of purchase requests via Administration Portal.
-- `_persist_admin_tasks_to_projection` (def) - Upserts administration tasks into PostgreSQL ceo_service_projections in a fast batch.
-- `_get_projected_admin_tasks` (def) - Reads administration tasks from PostgreSQL ceo_service_projections.
-- `get_admin_tasks` (def) - Fetches administration tasks.
-- `_persist_ma_deals_to_projection` (def) - Upserts M&A deals into PostgreSQL ceo_service_projections in a fast batch.
-- `_get_projected_ma_deals` (def) - Reads M&A deals from PostgreSQL ceo_service_projections with pending command overlays.
-- `get_ma_pipeline_tasks` (def) - Fetches active M&A acquisition pipeline tasks.
-- `get_ma_pipeline_summary` (def) - Aggregates executive metrics via M&A Microservice API or computes directly from local PostgreSQL projections when offline.
-- `get_ma_events` (def) - Transforms latest M&A pipeline activities and tasks into standard CEO event stream format.
-
-## services/integration/command_service.py (366 lines) - Generic Command Service Validates, persists, and orchestrates asynchronous business commands across all connected services.
+## services/integration/commands/command_service.py (366 lines) - Generic Command Service Validates, persists, and orchestrates asynchronous business commands across all connected services.
 - `CommandService` (class)
     - `submit_command` (def) - Validates the command, atomically persists the command and outbox record,
     - `get_command_status` (def) - Retrieves the tracking status of a durable command.
     - `retry_command` (def) - Retries an eligible failed command.
+
+## services/integration/commands/ma_command_processor.py (181 lines) - M&A Command Processor Consumes and executes commands from the 'ma.commands' queue, invokes authoritative deal/pipeline domain logic, and ...
+- `MACommandProcessor` (class)
+    - `__init__` (def)
+    - `start` (def)
+    - `stop` (def)
+    - `process_command` (def) - Dispatches an M&A command to the domain business logic.
+
+## services/integration/commands/outbox_publisher.py (192 lines) - Transactional Outbox Publisher Background worker that polls pending outbox entries, publishes them to RabbitMQ with publisher confirmatio...
+- `OutboxPublisher` (class)
+    - `__init__` (def)
+    - `start` (def)
+    - `stop` (def)
+    - `trigger` (def) - Notifies the publisher that new outbox entries are available.
+    - `_run_loop` (def)
+    - `process_outbox_batch` (def) - Fetches up to `limit` pending outbox entries and publishes them to RabbitMQ.
+
+## services/integration/commands/result_consumer.py (185 lines) - Result & Event Consumer Consumes authoritative command results and projection events from connected services, deduplicates via service_in...
+- `ResultConsumer` (class)
+    - `__init__` (def)
+    - `start` (def) - Starts subscribing to result and event queues.
+    - `stop` (def)
+    - `handle_incoming_message` (def) - Processes an incoming result or projection event message with inbox deduplication.
 
 ## services/integration/connectors/admin_connector.py (225 lines) - Administration Service Connector Handles Administration Portal domain commands, results, and local projection synchronization.
 - `PurchaseActionPayload` (class)
@@ -303,7 +298,35 @@ How to use: check `.agents/project-index.md` first to locate the file, then insp
     - `handle_command_result` (def) - Updates local projections on incoming command result from M&A.
     - `handle_projection_event` (def) - Updates local projection when M&A broadcasts a pipeline update.
 
-## services/integration/finance_integration_service.py (517 lines) - Finance & Enterprise System Integration Service Provides resilient machine-to-machine communication with the Finance Backend (enterprise_...
+## services/integration/services/admin_integration_service.py (1256 lines) - admin integration service (integration services)
+- `_resolve_admin_user_info` (def)
+- `_resolve_admin_user_id` (def)
+- `_generate_service_token` (def)
+- `_extract_port` (def)
+- `_map_to_ceo_approval_status` (def)
+- `_enrich_purchase_request_multi_currency` (def)
+- `_parse_purchase_request_item` (def)
+- `check_portals_health` (def)
+- `get_portal_health` (def) - Returns real-time health and connectivity metrics for all integrated applications
+- `_fetch_admin_raw_requests` (def)
+- `_persist_purchase_requests_to_projection` (def) - Upserts all requests into PostgreSQL ceo_service_projections for durable offline availability.
+- `_get_projected_purchase_requests` (def) - Reads purchasing requests from PostgreSQL ceo_service_projections with pending command overlay.
+- `sync_admin_records_from_source` (def) - Pulls fresh records from Admin Portal, updates the local PostgreSQL projection store,
+- `get_pending_purchase_requests` (def) - Fetches pending purchasing requests.
+- `get_completed_purchase_requests` (def) - Fetches completed / approved purchasing requests.
+- `get_purchase_request_detail` (def) - Fetches full request details.
+- `execute_purchase_transition` (def) - Executes approval or rejection of a purchase request via Administration Portal.
+- `execute_batch_purchase_transition` (def) - Executes batch approval or rejection of purchase requests via Administration Portal.
+- `_persist_admin_tasks_to_projection` (def) - Upserts administration tasks into PostgreSQL ceo_service_projections in a fast batch.
+- `_get_projected_admin_tasks` (def) - Reads administration tasks from PostgreSQL ceo_service_projections.
+- `get_admin_tasks` (def) - Fetches administration tasks.
+- `_persist_ma_deals_to_projection` (def) - Upserts M&A deals into PostgreSQL ceo_service_projections in a fast batch.
+- `_get_projected_ma_deals` (def) - Reads M&A deals from PostgreSQL ceo_service_projections with pending command overlays.
+- `get_ma_pipeline_tasks` (def) - Fetches active M&A acquisition pipeline tasks.
+- `get_ma_pipeline_summary` (def) - Aggregates executive metrics via M&A Microservice API or computes directly from local PostgreSQL projections when offline.
+- `get_ma_events` (def) - Transforms latest M&A pipeline activities and tasks into standard CEO event stream format.
+
+## services/integration/services/finance_integration_service.py (517 lines) - Finance & Enterprise System Integration Service Provides resilient machine-to-machine communication with the Finance Backend (enterprise_...
 - `CircuitState` (class)
 - `CircuitBreaker` (class)
     - `__init__` (def)
@@ -337,7 +360,7 @@ How to use: check `.agents/project-index.md` first to locate the file, then insp
 - `_register_finance_recovery_listener` (def)
     - `_on_state_change` (def)
 
-## services/integration/integration_resilience.py (233 lines) - Integration Resilience Layer Provides Circuit Breakers, Hard Timeout Handling, In-Memory Last-Known-Good Caching, and Standardized State ...
+## services/integration/services/integration_resilience.py (233 lines) - Integration Resilience Layer Provides Circuit Breakers, Hard Timeout Handling, In-Memory Last-Known-Good Caching, and Standardized State ...
 - `CircuitState` (class)
 - `CircuitBreaker` (class)
     - `__init__` (def)
@@ -356,36 +379,13 @@ How to use: check `.agents/project-index.md` first to locate the file, then insp
     - `get` (def)
 - `execute_resilient_call` (def) - Executes a network call protected by a circuit breaker, hard timeout, and last-known-good cache.
 
-## services/integration/ma_command_processor.py (181 lines) - M&A Command Processor Consumes and executes commands from the 'ma.commands' queue, invokes authoritative deal/pipeline domain logic, and ...
-- `MACommandProcessor` (class)
-    - `__init__` (def)
-    - `start` (def)
-    - `stop` (def)
-    - `process_command` (def) - Dispatches an M&A command to the domain business logic.
-
-## services/integration/outbox_publisher.py (192 lines) - Transactional Outbox Publisher Background worker that polls pending outbox entries, publishes them to RabbitMQ with publisher confirmatio...
-- `OutboxPublisher` (class)
-    - `__init__` (def)
-    - `start` (def)
-    - `stop` (def)
-    - `trigger` (def) - Notifies the publisher that new outbox entries are available.
-    - `_run_loop` (def)
-    - `process_outbox_batch` (def) - Fetches up to `limit` pending outbox entries and publishes them to RabbitMQ.
-
-## services/integration/projection_service.py (155 lines) - Projection Service Serves local filtered read-models with freshness metadata, decoupling UI reads from remote service availability.
+## services/integration/services/projection_service.py (155 lines) - Projection Service Serves local filtered read-models with freshness metadata, decoupling UI reads from remote service availability.
 - `ProjectionService` (class)
     - `get_projection` (def) - Retrieves a single projected entity with freshness metadata.
     - `list_projections` (def) - Lists multiple projected entities of a given resource type with freshness metadata.
     - `upsert_projection` (def) - Updates or creates a projected record in the database.
 
-## services/integration/result_consumer.py (185 lines) - Result & Event Consumer Consumes authoritative command results and projection events from connected services, deduplicates via service_in...
-- `ResultConsumer` (class)
-    - `__init__` (def)
-    - `start` (def) - Starts subscribing to result and event queues.
-    - `stop` (def)
-    - `handle_incoming_message` (def) - Processes an incoming result or projection event message with inbox deduplication.
-
-## services/integration/service_status_registry.py (439 lines) - Service Status Registry Maintains aggregated in-memory availability state across microservice instances via MQTT.
+## services/integration/services/service_status_registry.py (439 lines) - Service Status Registry Maintains aggregated in-memory availability state across microservice instances via MQTT.
 - `normalize_service_name` (def)
 - `ServiceStatusRegistry` (class) - Central in-memory registry of microservice instance availability.
     - `__init__` (def)

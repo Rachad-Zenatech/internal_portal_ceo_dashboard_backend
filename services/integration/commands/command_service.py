@@ -13,7 +13,7 @@ from fastapi import HTTPException
 from postgresql_db.database import get_pool
 from services.integration.connectors.connector_registry import connector_registry
 from services.integration.connectors.base_connector import CommandEnvelope, UserContext
-from services.integration.outbox_publisher import outbox_publisher
+from services.integration.commands.outbox_publisher import outbox_publisher
 from services.notifications.rabbitmq_service import COMMANDS_EXCHANGE_NAME
 
 logger = logging.getLogger(__name__)

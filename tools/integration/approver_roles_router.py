@@ -15,8 +15,8 @@ from pydantic import BaseModel
 
 from postgresql_db.database import get_pool
 from services.shared.auth_service import get_current_user_id_dependency
-from services.integration.admin_integration_service import _generate_service_token
-from services.integration.integration_resilience import admin_circuit_breaker
+from services.integration.services.admin_integration_service import _generate_service_token
+from services.integration.services.integration_resilience import admin_circuit_breaker
 
 logger = logging.getLogger(__name__)
 
@@ -239,7 +239,7 @@ async def add_approver_role_members(
     members: List[ApproverMemberIn],
     user_id: Optional[UUID] = Depends(get_current_user_id_dependency),
 ):
-    from services.integration.command_service import command_service
+    from services.integration.commands.command_service import command_service
     from services.integration.connectors.base_connector import UserContext
 
     role_code = role_code.upper()
@@ -295,7 +295,7 @@ async def remove_approver_role_member(
     user_id: str,
     current_user: Optional[UUID] = Depends(get_current_user_id_dependency),
 ):
-    from services.integration.command_service import command_service
+    from services.integration.commands.command_service import command_service
     from services.integration.connectors.base_connector import UserContext
 
     role_code = role_code.upper()

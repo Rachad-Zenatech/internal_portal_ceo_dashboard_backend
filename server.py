@@ -116,7 +116,7 @@ async def lifespan(app: FastAPI):
     # Initialize Event-Driven MQTT Engine, Presence & Status Registry
     from services.notifications.embedded_broker import ensure_mqtt_broker_running, stop_embedded_mqtt_broker
     from services.notifications.mqtt_presence import MqttServicePresence
-    from services.integration.service_status_registry import service_status_registry
+    from services.integration.services.service_status_registry import service_status_registry
 
     await ensure_mqtt_broker_running()
 
@@ -129,10 +129,10 @@ async def lifespan(app: FastAPI):
 
     # Initialize Asynchronous Cross-Service Messaging & Workers
     from services.notifications.rabbitmq_service import rabbitmq_manager
-    from services.integration.outbox_publisher import outbox_publisher
-    from services.integration.result_consumer import result_consumer
-    from services.integration.admin_command_processor import admin_command_processor
-    from services.integration.ma_command_processor import ma_command_processor
+    from services.integration.commands.outbox_publisher import outbox_publisher
+    from services.integration.commands.result_consumer import result_consumer
+    from services.integration.commands.admin_command_processor import admin_command_processor
+    from services.integration.commands.ma_command_processor import ma_command_processor
 
     await rabbitmq_manager.connect()
     outbox_publisher.start()
@@ -302,8 +302,8 @@ app.add_middleware(
 @app.get("/api/integration/status")
 @app.get("/api/integration-status")
 async def api_ceo_integration_status():
-    from services.integration.service_status_registry import service_status_registry
-    from services.integration.integration_resilience import admin_circuit_breaker, ma_circuit_breaker
+    from services.integration.services.service_status_registry import service_status_registry
+    from services.integration.services.integration_resilience import admin_circuit_breaker, ma_circuit_breaker
     import httpx
 
     # 1. Admin Service status

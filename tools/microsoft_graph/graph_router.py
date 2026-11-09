@@ -11,7 +11,7 @@ from pydantic import BaseModel
 import httpx
 
 from services.shared.auth_service import get_current_user_id_dependency
-from services.integration.admin_integration_service import _generate_service_token
+from services.integration.services.admin_integration_service import _generate_service_token
 
 logger = logging.getLogger(__name__)
 
