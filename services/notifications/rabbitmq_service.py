@@ -961,9 +961,13 @@ class RabbitMQManager:
                 elif age <= 15.0 and entry.get("status") == "online":
                     recent_heartbeat = True
 
+            # Queue/stream consumer counts are NOT evidence a peer is up: this server runs
+            # in-process processors for peers' queues (e.g. ma.commands). Only the peer's own
+            # broker connection or a fresh presence heartbeat counts.
             has_hub_connection = (
-                bool(matching_conns) or primary_q_consumers > 0 or primary_s_consumers > 0
-                or (is_self and self.is_connected) or recent_heartbeat
+                bool(matching_conns)
+                or (is_self and self.is_connected)
+                or recent_heartbeat
             )
             queues_working = queues_exist and bool(queue_items) and all(i["working"] for i in queue_items)
             streams_working = streams_exist and bool(stream_items) and all(i["working"] for i in stream_items)

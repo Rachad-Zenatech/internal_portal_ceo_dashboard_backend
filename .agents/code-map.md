@@ -470,7 +470,7 @@ How to use: check `.agents/project-index.md` first to locate the file, then insp
 - `sync_approval_notifications` (def) - Ensures unread notifications exist for all pending purchase requests that require approval.
 - `sync_ma_loi_accepted_notifications` (def) - Ensures unread executive notifications exist for all deals where an LOI was accepted.
 
-## services/notifications/rabbitmq_service.py (1158 lines) - RabbitMQ Service & Topology Manager Provides resilient connection management, topology declaration, publisher confirmations, and dead-let...
+## services/notifications/rabbitmq_service.py (1162 lines) - RabbitMQ Service & Topology Manager Provides resilient connection management, topology declaration, publisher confirmations, and dead-let...
 - `_sanitize_amqp_url` (def) - Mask password from AMQP URLs to prevent logging credentials.
 - `_explicit_url_parts` (def) - Parsed RABBITMQ_URL, or None if unset / pointing at host.docker.internal (ignored, as before).
 - `get_rabbitmq_host` (def)
@@ -633,6 +633,20 @@ How to use: check `.agents/project-index.md` first to locate the file, then insp
 ## services/uploads/upload_security_service.py (55 lines) - upload security service (uploads)
 - `max_upload_bytes` (def)
 - `read_upload_limited` (def) - Read an upload with an extension allowlist and a hard byte limit.
+
+## tests/test_hub_peer_status.py (105 lines) - A peer is only 'online' in the Message Hub if it has its own broker connection or a fresh heartbeat.
+- `_Resp` (class)
+    - `__init__` (def)
+    - `json` (def)
+- `_fake_client` (def)
+    - `_Client` (class)
+- `_queues` (def)
+- `_run` (def)
+- `_server` (def)
+- `test_peer_consumer_alone_is_not_online` (def)
+- `test_peer_with_own_connection_is_online` (def)
+- `test_peer_with_fresh_heartbeat_is_online` (def)
+- `test_no_peer_is_online_from_consumers_alone` (def) - Consumers on every peer's primary queue/stream must not make any peer online.
 
 ## tools/dashboard/dashboard.py (55 lines) - dashboard (dashboard)
 - `overview` (def) [GET /overview]
