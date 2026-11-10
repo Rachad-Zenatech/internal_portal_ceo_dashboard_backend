@@ -24,6 +24,10 @@ logger = logging.getLogger(__name__)
 ADMIN_API_BASE = os.getenv("ADMIN_PORTAL_API_URL", os.getenv("ADMIN_API_BASE", "http://127.0.0.1:8002")).rstrip("/")
 CEO_DATA_API_URL = os.getenv("CEO_DATA_API_URL", os.getenv("INTERNAL_API_URL", "http://127.0.0.1:8005")).rstrip("/")
 MA_API_BASE = os.getenv("MA_PORTAL_API_URL", os.getenv("MA_API_BASE", "http://127.0.0.1:8003")).rstrip("/")
+# The M&A service checks the token's user against ITS OWN users table (active, not deleted). This must be an M&A
+# user id, not an Administration one: each service has its own users table with different ids.
+MA_SERVICE_USER_ID = os.getenv("MA_SERVICE_USER_ID", "1623e39f-1d87-4e6d-a6c3-3195c6ab773b").strip()
+MA_SERVICE_USER_EMAIL = os.getenv("MA_SERVICE_USER_EMAIL", "").strip()
 TIMEOUT_SECONDS = float(os.getenv("INTEGRATION_TIMEOUT_SECONDS", "5.0"))
 CONNECT_TIMEOUT = 2.0
 HARD_TIMEOUT_SECONDS = float(os.getenv("HARD_TIMEOUT_SECONDS", "15.0"))
@@ -137,6 +141,36 @@ async def _generate_service_token(user_id: Optional[UUID] = None) -> str:
     }
     token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
     _service_token_cache[admin_uid] = (token, exp_dt.timestamp())
+    return token
+
+
+async def _generate_ma_service_token() -> str:
+    """Service token for calls to the M&A service, signed for the configured M&A user.
+
+    Unlike `_generate_service_token`, this never swaps in an Administration-database user: M&A rejects a token whose
+    `sub` is not one of its own active users ("User is inactive or no longer exists").
+    """
+    cache_key = f"ma:{MA_SERVICE_USER_ID}"
+    now_ts = time.time()
+    cached = _service_token_cache.get(cache_key)
+    if cached and cached[1] > now_ts + 300:
+        return cached[0]
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    exp_dt = now + datetime.timedelta(hours=2)
+    payload = {
+        "sub": MA_SERVICE_USER_ID,
+        "is_super_admin": True,
+        "is_service_token": True,
+        "iss": JWT_ISSUER,
+        "iat": int(now.timestamp()),
+        "jti": secrets.token_urlsafe(16),
+        "exp": int(exp_dt.timestamp()),
+    }
+    if MA_SERVICE_USER_EMAIL:
+        payload["email"] = MA_SERVICE_USER_EMAIL
+    token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    _service_token_cache[cache_key] = (token, exp_dt.timestamp())
     return token
 
 
@@ -776,8 +810,13 @@ async def execute_purchase_transition(request_id: str, action: str, note: Option
         "comment": note or f"Executive {action_clean} from CEO Dashboard",
         "approval": {
             "approver": "CEO Executive",
-            "comment": note or f"Executive {action_clean} from CEO Dashboard"
-        }
+            "comment": note or f"Executive {action_clean} from CEO Dashboard",
+            # A CEO decision is the Company (Level 2) decision: it skips and overrides Level 1, so one
+            # approve/reject finishes the request. `pass_to_level_2: false` keeps older Administration
+            # builds (which do not know `executive_override`) from escalating to a second approval.
+            "executive_override": True,
+            "pass_to_level_2": False,
+        },
     }
 
     try:
@@ -853,7 +892,7 @@ async def execute_batch_purchase_transition(
         async with httpx.AsyncClient(timeout=min(25.0, HARD_TIMEOUT_SECONDS)) as client:
             resp = await client.post(
                 url,
-                json={"request_ids": parsed_ids, "comment": comment},
+                json={"request_ids": parsed_ids, "comment": comment, "executive_override": True},
                 headers=headers,
             )
             if resp.status_code in [200, 201]:
@@ -1041,7 +1080,7 @@ async def _get_projected_ma_deals() -> List[Dict[str, Any]]:
         async with pool.acquire() as conn:
             rows = await conn.fetch(
                 """
-                SELECT resource_id, data, source_status
+                SELECT resource_id, data, source_status, last_synchronized_at
                 FROM ceo_service_projections
                 WHERE service_name = 'ma' AND resource_type = 'deal'
                 ORDER BY updated_at DESC
@@ -1061,6 +1100,8 @@ async def _get_projected_ma_deals() -> List[Dict[str, Any]]:
             for r in rows:
                 d = json.loads(r["data"]) if isinstance(r["data"], str) else (r["data"] or {})
                 res_id = str(r["resource_id"])
+                if r["last_synchronized_at"]:
+                    d["_synced_at"] = r["last_synchronized_at"].isoformat()
                 if res_id in queued_map:
                     cmd_row = queued_map[res_id]
                     payload_obj = json.loads(cmd_row["payload"]) if isinstance(cmd_row["payload"], str) else (cmd_row["payload"] or {})
@@ -1078,42 +1119,90 @@ async def _get_projected_ma_deals() -> List[Dict[str, Any]]:
         return []
 
 
-async def get_ma_pipeline_tasks(limit: int = 50, skip: int = 0, loi_accepted_only: bool = False) -> List[Dict[str, Any]]:
-    """
-    Fetches active M&A acquisition pipeline tasks.
-    - When M&A service is online, fetches live and updates the PostgreSQL local projection asynchronously.
-    - When M&A service is offline, returns the persistent local copy from PostgreSQL.
-    """
+# The M&A /pipeline/tasks endpoint returns every task (it ignores `limit`), so it can take longer than the default
+# integration timeout. The pipeline list and the summary are requested together on every page load; they share one
+# upstream call so they always agree on whether the data is live.
+# The priorities the M&A Pipeline Dashboard lists (PipelineDashboard.tsx `validStatuses` in the M&A front end). A task
+# with any other priority (or none) is not a company on that dashboard, so it is not counted as a target company here.
+# Keep in step with that list, or the CEO count and the M&A dashboard count drift apart.
+MA_DASHBOARD_PRIORITIES = frozenset({
+    "high value", "good fit", "50/50",
+    "loi-sent", "loi sent",
+    "loi-accepted", "loi sent - accepted",
+    "loi-declined", "loi sent - declined",
+    "not a fit", "not ready to sell",
+})
+MA_TASKS_TIMEOUT_SECONDS = float(os.getenv("MA_TASKS_TIMEOUT_SECONDS", "15.0"))
+MA_LIVE_COALESCE_SECONDS = float(os.getenv("MA_LIVE_COALESCE_SECONDS", "2.0"))
+_ma_live_cache: Optional[Tuple[float, List[Dict[str, Any]]]] = None
+_ma_live_lock = asyncio.Lock()
+
+
+async def _request_live_ma_tasks() -> Optional[List[Dict[str, Any]]]:
+    """One real call to the M&A service for all pipeline tasks. Returns None when they could not be loaded."""
     from services.integration.services.service_status_registry import service_status_registry
     is_online = service_status_registry.is_service_online("ma")
 
-    raw_data: List[Dict[str, Any]] = []
+    if not (is_online or ma_circuit_breaker.allow_request()):
+        logger.warning("M&A circuit breaker is open; serving saved M&A data.")
+        return None
 
-    if is_online or ma_circuit_breaker.allow_request():
-        try:
-            token = await _generate_service_token(user_id=UUID("1623e39f-1d87-4e6d-a6c3-3195c6ab773b"))
-            headers = {"Authorization": f"Bearer {token}"}
-            url = f"{MA_API_BASE}/api/pipeline/tasks?limit=1000"
-            client_timeout = httpx.Timeout(TIMEOUT_SECONDS, connect=CONNECT_TIMEOUT)
-            async with httpx.AsyncClient(timeout=client_timeout) as client:
-                resp = await client.get(url, headers=headers)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    if isinstance(data, list):
-                        raw_data = data
-                        ma_circuit_breaker.record_success()
-                        if not is_online:
-                            service_status_registry.update_instance_status("ma", "ma-01", "online")
-                        asyncio.create_task(_persist_ma_deals_to_projection(data))
-                        create_background_task(_persist_ma_deals_to_projection(data), name="persist-ma-deals-projection")
-                elif resp.status_code in (401, 403):
-                    logger.warning(f"M&A API auth error (HTTP {resp.status_code}): {resp.text[:200]}")
-        except Exception as exc:
-            ma_circuit_breaker.record_failure(exc)
-            logger.warning(f"Error fetching live M&A tasks: {exc}. Reading local projection.")
+    try:
+        token = await _generate_ma_service_token()
+        headers = {"Authorization": f"Bearer {token}"}
+        client_timeout = httpx.Timeout(max(TIMEOUT_SECONDS, MA_TASKS_TIMEOUT_SECONDS), connect=CONNECT_TIMEOUT)
+        async with httpx.AsyncClient(timeout=client_timeout) as client:
+            resp = await client.get(f"{MA_API_BASE}/api/pipeline/tasks", headers=headers)
+        if resp.status_code != 200:
+            logger.warning(f"M&A API at {MA_API_BASE} returned HTTP {resp.status_code}: {resp.text[:200]}. Serving saved M&A data.")
+            return None
+        data = resp.json()
+        if not isinstance(data, list):
+            logger.warning(f"M&A API at {MA_API_BASE} returned an unexpected payload ({type(data).__name__}); serving saved M&A data.")
+            return None
+    except Exception as exc:
+        ma_circuit_breaker.record_failure(exc)
+        logger.warning(f"Could not reach the M&A API at {MA_API_BASE}: {exc!r}. Serving saved M&A data.")
+        return None
 
-    if not raw_data:
-        raw_data = await _get_projected_ma_deals()
+    ma_circuit_breaker.record_success()
+    if not is_online:
+        service_status_registry.update_instance_status("ma", "ma-01", "online")
+    create_background_task(_persist_ma_deals_to_projection(data), name="persist-ma-deals-projection")
+    return data
+
+
+async def _get_live_ma_tasks() -> Optional[List[Dict[str, Any]]]:
+    """Live M&A tasks, or None if unavailable. Concurrent callers share one request; a result is reused for only
+    a couple of seconds, so realtime updates are not held back."""
+    global _ma_live_cache
+
+    def _fresh() -> bool:
+        return _ma_live_cache is not None and time.monotonic() - _ma_live_cache[0] < MA_LIVE_COALESCE_SECONDS
+
+    if _fresh():
+        return _ma_live_cache[1]
+    async with _ma_live_lock:
+        if _fresh():
+            return _ma_live_cache[1]
+        data = await _request_live_ma_tasks()
+        if data is not None:
+            _ma_live_cache = (time.monotonic(), data)
+        return data
+
+
+async def get_ma_pipeline_tasks(limit: int = 50, skip: int = 0, loi_accepted_only: bool = False) -> List[Dict[str, Any]]:
+    """
+    Fetches active M&A acquisition pipeline tasks.
+    - When the live M&A call succeeds, returns it (and refreshes the PostgreSQL local projection in the background).
+    - When it fails, returns the saved copy from PostgreSQL with every row labelled `_stale`.
+    """
+    live = await _get_live_ma_tasks()
+    if live is not None:
+        raw_data = live
+    else:
+        # Fall back to the saved copy only when the live call failed. A live empty list is a real answer.
+        raw_data = [{**d, "_stale": True} for d in await _get_projected_ma_deals()]
 
     if loi_accepted_only:
         filtered = [
@@ -1124,61 +1213,46 @@ async def get_ma_pipeline_tasks(limit: int = 50, skip: int = 0, loi_accepted_onl
     return raw_data[skip : skip + limit] if limit else raw_data
 
 
+async def _get_ma_call_log_count() -> int:
+    """Number of call logs, best effort: the summary does not depend on it."""
+    try:
+        token = await _generate_ma_service_token()
+        client_timeout = httpx.Timeout(TIMEOUT_SECONDS, connect=CONNECT_TIMEOUT)
+        async with httpx.AsyncClient(timeout=client_timeout) as client:
+            resp = await client.get(f"{MA_API_BASE}/api/pipeline/call-logs", headers={"Authorization": f"Bearer {token}"})
+        data = resp.json() if resp.status_code == 200 else None
+        return len(data) if isinstance(data, list) else 0
+    except Exception:
+        return 0
+
+
 async def get_ma_pipeline_summary() -> Dict[str, Any]:
     """
-    Aggregates executive metrics via M&A Microservice API or computes directly from local PostgreSQL projections when offline.
+    Aggregates executive metrics from the live M&A pipeline, or from the saved PostgreSQL copy when M&A cannot be
+    reached. `data_source` says which one, so the UI never presents saved numbers as live.
     """
-    from services.integration.services.service_status_registry import service_status_registry
-    is_online = service_status_registry.is_service_online("ma")
-
-    tasks: List[Dict[str, Any]] = []
-    call_logs_count = 0
     companies_count = 0
+    as_of: Optional[str] = None
 
-    if is_online or ma_circuit_breaker.allow_request():
-        try:
-            token = await _generate_service_token(user_id=UUID("1623e39f-1d87-4e6d-a6c3-3195c6ab773b"))
-            headers = {"Authorization": f"Bearer {token}"}
-            client_timeout = httpx.Timeout(TIMEOUT_SECONDS, connect=CONNECT_TIMEOUT)
-
-            async with httpx.AsyncClient(timeout=client_timeout) as client:
-                r_tasks, r_calls = await asyncio.gather(
-                    client.get(f"{MA_API_BASE}/api/pipeline/tasks", headers=headers),
-                    client.get(f"{MA_API_BASE}/api/pipeline/call-logs", headers=headers),
-                    return_exceptions=True,
-                )
-
-            if not isinstance(r_tasks, Exception) and r_tasks.status_code == 200:
-                t_data = r_tasks.json()
-                if isinstance(t_data, list):
-                    tasks = t_data
-                    ma_circuit_breaker.record_success()
-                    if not is_online:
-                        service_status_registry.update_instance_status("ma", "ma-01", "online")
-                        is_online = True
-                    asyncio.create_task(_persist_ma_deals_to_projection(tasks))
-                    create_background_task(_persist_ma_deals_to_projection(tasks), name="persist-ma-deals-summary-projection")
-
-            if not isinstance(r_calls, Exception) and r_calls.status_code == 200:
-                c_data = r_calls.json()
-                call_logs_count = len(c_data) if isinstance(c_data, list) else 0
-
-        except Exception as exc:
-            ma_circuit_breaker.record_failure(exc)
-            logger.warning(f"Error fetching live M&A summary: {exc}. Computing from local projection.")
-
-    if not tasks:
+    live_tasks = await _get_live_ma_tasks()
+    live_ok = live_tasks is not None
+    if live_ok:
+        tasks = live_tasks
+        call_logs_count = await _get_ma_call_log_count()
+    else:
         tasks = await _get_projected_ma_deals()
         call_logs_count = max(len(tasks) * 3, 12)
+        stamps = [t["_synced_at"] for t in tasks if t.get("_synced_at")]
+        as_of = max(stamps) if stamps else None
 
-    # Target companies are the active target companies tracked on the pipeline dashboard (those with assigned priority)
-    # The pipeline records with assigned priorities represent the 376 active prospective target companies
+    # Target companies are the companies the M&A Pipeline Dashboard lists: those whose priority is one of its valid
+    # statuses. Counting "anything with a priority" over-counts (tasks with other priorities are not on that dashboard).
     active_target_tasks = [
         t for t in tasks
-        if t.get("priority_id") is not None or (t.get("priority_name") and str(t.get("priority_name")).lower() != "unclassified")
+        if str(t.get("priority_name") or "").strip().lower() in MA_DASHBOARD_PRIORITIES
     ]
-    companies_count = len(active_target_tasks) if active_target_tasks else len(tasks)
-    eval_tasks = active_target_tasks if active_target_tasks else tasks
+    companies_count = len(active_target_tasks)
+    eval_tasks = active_target_tasks
 
     # Break down tasks by priority / status
     priorities: Dict[str, int] = {}
@@ -1219,7 +1293,11 @@ async def get_ma_pipeline_summary() -> Dict[str, Any]:
         total_rev_formatted = "$0"
 
     return {
-        "status": "online" if is_online else "offline",
+        # "online" only when these numbers came from the live M&A service. The message-hub heartbeat says the
+        # service is running, not that this request reached it.
+        "status": "online" if live_ok else "offline",
+        "data_source": "live" if live_ok else "saved",
+        "as_of": as_of,
         "total_active_pipeline_tasks": companies_count,
         "total_target_companies": companies_count,
         "total_call_interactions": call_logs_count,

@@ -38,6 +38,7 @@ from tools.shared.search import router as search_router
 from tools.shared.rbac_router import router as rbac_router
 from tools.shared.auth_router import router as auth_router
 from tools.notifications.notification_router import notification_router
+from tools.customization.board_router import board_router
 from tools.notifications.notification_ws_router import notification_ws_router
 from tools.shared.observability import router as observability_router
 from tools.dashboard.dashboard import router as dashboard_router
@@ -92,6 +93,8 @@ async def lifespan(app: FastAPI):
 
         from postgresql_db.schemas.cross_service_schema import ensure_cross_service_schema
         await ensure_cross_service_schema()
+        from postgresql_db.schemas.user_dashboard_layouts_schema import ensure_user_dashboard_layouts_schema
+        await ensure_user_dashboard_layouts_schema()
         try:
             from postgresql_db.schemas.setup_ai_observability_schema import setup as setup_ai_observability_schema
             await setup_ai_observability_schema()
@@ -281,6 +284,7 @@ app.include_router(auth_router, prefix="/api", tags=["Authentication"])
 app.include_router(observability_router, prefix="/api", tags=["Observability"])
 app.include_router(notification_router, prefix="/api", tags=["Notifications"], dependencies=authenticated)
 app.include_router(notification_ws_router, tags=["Notifications"])
+app.include_router(board_router, prefix="/api/v1/ceo", tags=["Dashboard Customization"], dependencies=authenticated)
 
 # Mount Dashboard and CEO Integration APIs
 app.include_router(dashboard_router, prefix="/api/dashboard", tags=["CEO Dashboard Metrics"])

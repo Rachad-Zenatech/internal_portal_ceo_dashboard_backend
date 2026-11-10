@@ -12,6 +12,7 @@ For detailed function and route definitions, see `.agents/code-map.md`.
 - mcp_tools/shared/audit.py (37 lines) - Truncate to limit to prevent blowing up the LLM context window
 - mcp_tools/shared/permissions.py (38 lines) - permissions (shared)
 - mcp_tools/uploads/upload_files.py (36 lines) - upload files (uploads)
+- models/customization/board_model.py (62 lines) - board model (customization)
 - models/notifications/notification_model.py (29 lines) - notification model (notifications)
 - models/shared/rbac_model.py (208 lines) - rbac model (shared)
 - postgresql_db/database.py (335 lines) - Optional dotenv import for loading .env and local overrides during development
@@ -19,23 +20,25 @@ For detailed function and route definitions, see `.agents/code-map.md`.
 - postgresql_db/schemas/notifications_schema.py (46 lines) - notifications schema (schemas)
 - postgresql_db/schemas/setup_ai_observability_schema.py (93 lines) - AI observability, caching and usage limits: trace spans for every AI step (model calls, embeddings, tool calls, guard checks, cache looku...
 - postgresql_db/schemas/setup_pbac_schema.py (258 lines) - setup pbac schema (schemas)
+- postgresql_db/schemas/user_dashboard_layouts_schema.py (36 lines) - user dashboard layouts schema (schemas)
 - postgresql_db/setup_rls_security.py (309 lines) - RDS PostgreSQL Role-Based Access Control & Row-Level Security (RLS) Setup for the CEO Dashboard backend.
 - run_mqtt_broker.py (48 lines) - Local MQTT Broker Runner (Zero External Dependencies) Runs a standalone MQTT broker on 127.0.0.1:1883 using amqtt.
-- server.py (597 lines) - server.py - CEO Executive Dashboard Backend Server
+- server.py (601 lines) - server.py - CEO Executive Dashboard Backend Server
 - services/ai/ai_guardrails.py (249 lines) - AI guardrails: screening what goes into the model and redacting personal data from what comes out.
 - services/ai/ai_observability.py (367 lines) - AI observability: a trace span for every model call, embedding, retrieval, cache lookup, guard check and tool call, plus a prompt log of ...
 - services/ai/ai_usage_service.py (141 lines) - AI Usage Limits Caps how often Gemini runs, so one person (or a stuck loop) can't use up the provider quota or run up cost.
+- services/customization/board_service.py (53 lines) - board service (customization)
 - services/dashboard/dashboard_service.py (323 lines) - dashboard service (dashboard)
 - services/integration/commands/admin_command_processor.py (341 lines) - Administration Command Processor Consumes and executes commands from the 'administration.commands' queue, invokes authoritative domain lo...
 - services/integration/commands/command_service.py (366 lines) - Generic Command Service Validates, persists, and orchestrates asynchronous business commands across all connected services.
 - services/integration/commands/ma_command_processor.py (181 lines) - M&A Command Processor Consumes and executes commands from the 'ma.commands' queue, invokes authoritative deal/pipeline domain logic, and ...
 - services/integration/commands/outbox_publisher.py (192 lines) - Transactional Outbox Publisher Background worker that polls pending outbox entries, publishes them to RabbitMQ with publisher confirmatio...
-- services/integration/commands/result_consumer.py (216 lines) - Result & Event Consumer Consumes authoritative command results and projection events from connected services, deduplicates via service_in...
+- services/integration/commands/result_consumer.py (225 lines) - Result & Event Consumer Consumes authoritative command results and projection events from connected services, deduplicates via service_in...
 - services/integration/connectors/admin_connector.py (225 lines) - Administration Service Connector Handles Administration Portal domain commands, results, and local projection synchronization.
 - services/integration/connectors/base_connector.py (131 lines) - Base Service Connector Defines the abstract interface and standard envelopes for service connectors in the CEO Dashboard.
 - services/integration/connectors/connector_registry.py (36 lines) - Connector Registry Maintains typed registrations for all service connectors in the CEO Dashboard ecosystem.
 - services/integration/connectors/ma_connector.py (186 lines) - M&A Service Connector Handles Mergers & Acquisitions domain commands, results, and local projection synchronization.
-- services/integration/services/admin_integration_service.py (1268 lines) - admin integration service (integration services)
+- services/integration/services/admin_integration_service.py (1346 lines) - admin integration service (integration services)
 - services/integration/services/finance_integration_service.py (517 lines) - Finance & Enterprise System Integration Service Provides resilient machine-to-machine communication with the Finance Backend (enterprise_...
 - services/integration/services/integration_resilience.py (233 lines) - Integration Resilience Layer Provides Circuit Breakers, Hard Timeout Handling, In-Memory Last-Known-Good Caching, and Standardized State ...
 - services/integration/services/projection_service.py (155 lines) - Projection Service Serves local filtered read-models with freshness metadata, decoupling UI reads from remote service availability.
@@ -54,7 +57,7 @@ For detailed function and route definitions, see `.agents/code-map.md`.
 - services/uploads/s3_storage_service.py (148 lines) - s3 storage service (uploads)
 - services/uploads/upload_archive_service.py (224 lines) - upload archive service (uploads)
 - services/uploads/upload_security_service.py (55 lines) - upload security service (uploads)
-- tests/test_hub_peer_status.py (105 lines) - A peer is only 'online' in the Message Hub if it has its own broker connection or a fresh heartbeat.
+- tools/customization/board_router.py (38 lines) - board router (customization)
 - tools/dashboard/dashboard.py (55 lines) - dashboard (dashboard)
 - tools/integration/approver_roles_router.py (344 lines) - Approver Roles Router Manages HIGH_LEVEL_APPROVER and LOW_LEVEL_APPROVER role membership for the CEO Dashboard, forwarding changes to the...
 - tools/integration/ceo_integration_router.py (747 lines) - ceo integration router (integration)

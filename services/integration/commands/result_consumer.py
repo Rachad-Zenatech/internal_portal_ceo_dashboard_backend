@@ -211,5 +211,14 @@ class ResultConsumer:
         except Exception as sse_err:
             logger.warning(f"Failed broadcasting SSE notification: {sse_err}")
 
+        # 5. Mirror to the WebSocket channel the dashboard actually subscribes to for cache
+        # invalidation. Without this, M&A/Admin projection updates never reach the UI.
+        try:
+            from tools.integration.service_status_router import ws_manager
+
+            await ws_manager.broadcast({**sse_payload, "service": source_svc})
+        except Exception as ws_err:
+            logger.warning(f"Failed broadcasting WebSocket notification: {ws_err}")
+
 
 result_consumer = ResultConsumer()

@@ -55,6 +55,15 @@ How to use: check `.agents/project-index.md` first to locate the file, then insp
 - `list_uploaded_files_tool` (def) - Get a list of all uploaded archive files.
 - `get_uploaded_file_tool` (def) - Get metadata for a specific uploaded archive file by ID.
 
+## models/customization/board_model.py (62 lines) - board model (customization)
+- `validate_board_key` (def)
+- `WidgetConfigModel` (class) - One widget on a board.
+- `LayoutItemModel` (class)
+- `BoardState` (class)
+    - `widget_ids_unique` (def)
+- `BoardResponse` (class)
+- `to_response` (def)
+
 ## models/notifications/notification_model.py (29 lines) - notification model (notifications)
 - `NotificationCreate` (class)
 - `NotificationResponse` (class)
@@ -142,6 +151,10 @@ How to use: check `.agents/project-index.md` first to locate the file, then insp
 ## postgresql_db/schemas/setup_pbac_schema.py (258 lines) - setup pbac schema (schemas)
 - `setup` (def)
 
+## postgresql_db/schemas/user_dashboard_layouts_schema.py (36 lines) - user dashboard layouts schema (schemas)
+- `ensure_user_dashboard_layouts_schema` (def)
+    - `main` (def)
+
 ## postgresql_db/setup_rls_security.py (309 lines) - RDS PostgreSQL Role-Based Access Control & Row-Level Security (RLS) Setup for the CEO Dashboard backend.
 - `ensure_rls_security` (def) - Apply RDS PostgreSQL permission roles and Row-Level Security (RLS) policies idempotently.
     - `_main` (def)
@@ -149,7 +162,7 @@ How to use: check `.agents/project-index.md` first to locate the file, then insp
 ## run_mqtt_broker.py (48 lines) - Local MQTT Broker Runner (Zero External Dependencies) Runs a standalone MQTT broker on 127.0.0.1:1883 using amqtt.
 - `start_broker` (def)
 
-## server.py (597 lines) - server.py - CEO Executive Dashboard Backend Server
+## server.py (601 lines) - server.py - CEO Executive Dashboard Backend Server
 - `lifespan` (def)
 - `MessageItem` (class)
 - `ChatRequest` (class)
@@ -221,6 +234,12 @@ How to use: check `.agents/project-index.md` first to locate the file, then insp
 - `reserve` (def) - Record one Gemini call, or raise AiLimitExceeded (HTTP 429) with a message saying when it frees up.
 - `usage_for` (def) - What a person has left, per feature, for showing in the UI.
 
+## services/customization/board_service.py (53 lines) - board service (customization)
+- `_decode_state` (def) - asyncpg returns JSONB as text unless a codec is registered; normalise to a dict.
+- `get_board` (def)
+- `save_board` (def)
+- `delete_board` (def)
+
 ## services/dashboard/dashboard_service.py (323 lines) - dashboard service (dashboard)
 - `_overview_cache_seconds` (def)
 - `_dashboard_connection` (def)
@@ -264,7 +283,7 @@ How to use: check `.agents/project-index.md` first to locate the file, then insp
     - `_run_loop` (def)
     - `process_outbox_batch` (def) - Fetches up to `limit` pending outbox entries and publishes them to RabbitMQ.
 
-## services/integration/commands/result_consumer.py (216 lines) - Result & Event Consumer Consumes authoritative command results and projection events from connected services, deduplicates via service_in...
+## services/integration/commands/result_consumer.py (225 lines) - Result & Event Consumer Consumes authoritative command results and projection events from connected services, deduplicates via service_in...
 - `ResultConsumer` (class)
     - `__init__` (def)
     - `start` (def) - Starts subscribing to result and event queues.
@@ -322,10 +341,11 @@ How to use: check `.agents/project-index.md` first to locate the file, then insp
     - `handle_command_result` (def) - Updates local projections on incoming command result from M&A.
     - `handle_projection_event` (def) - Updates local projection when M&A broadcasts a pipeline update.
 
-## services/integration/services/admin_integration_service.py (1268 lines) - admin integration service (integration services)
+## services/integration/services/admin_integration_service.py (1346 lines) - admin integration service (integration services)
 - `_resolve_admin_user_info` (def)
 - `_resolve_admin_user_id` (def)
 - `_generate_service_token` (def)
+- `_generate_ma_service_token` (def) - Service token for calls to the M&A service, signed for the configured M&A user.
 - `_extract_port` (def)
 - `_map_to_ceo_approval_status` (def)
 - `_enrich_purchase_request_multi_currency` (def)
@@ -346,8 +366,12 @@ How to use: check `.agents/project-index.md` first to locate the file, then insp
 - `get_admin_tasks` (def) - Fetches administration tasks.
 - `_persist_ma_deals_to_projection` (def) - Upserts M&A deals into PostgreSQL ceo_service_projections in a fast batch.
 - `_get_projected_ma_deals` (def) - Reads M&A deals from PostgreSQL ceo_service_projections with pending command overlays.
+- `_request_live_ma_tasks` (def) - One real call to the M&A service for all pipeline tasks.
+- `_get_live_ma_tasks` (def) - Live M&A tasks, or None if unavailable.
+    - `_fresh` (def)
 - `get_ma_pipeline_tasks` (def) - Fetches active M&A acquisition pipeline tasks.
-- `get_ma_pipeline_summary` (def) - Aggregates executive metrics via M&A Microservice API or computes directly from local PostgreSQL projections when offline.
+- `_get_ma_call_log_count` (def) - Number of call logs, best effort: the summary does not depend on it.
+- `get_ma_pipeline_summary` (def) - Aggregates executive metrics from the live M&A pipeline, or from the saved PostgreSQL copy when M&A cannot be
 - `get_ma_events` (def) - Transforms latest M&A pipeline activities and tasks into standard CEO event stream format.
 
 ## services/integration/services/finance_integration_service.py (517 lines) - Finance & Enterprise System Integration Service Provides resilient machine-to-machine communication with the Finance Backend (enterprise_...
@@ -634,19 +658,11 @@ How to use: check `.agents/project-index.md` first to locate the file, then insp
 - `max_upload_bytes` (def)
 - `read_upload_limited` (def) - Read an upload with an extension allowlist and a hard byte limit.
 
-## tests/test_hub_peer_status.py (105 lines) - A peer is only 'online' in the Message Hub if it has its own broker connection or a fresh heartbeat.
-- `_Resp` (class)
-    - `__init__` (def)
-    - `json` (def)
-- `_fake_client` (def)
-    - `_Client` (class)
-- `_queues` (def)
-- `_run` (def)
-- `_server` (def)
-- `test_peer_consumer_alone_is_not_online` (def)
-- `test_peer_with_own_connection_is_online` (def)
-- `test_peer_with_fresh_heartbeat_is_online` (def)
-- `test_no_peer_is_online_from_consumers_alone` (def) - Consumers on every peer's primary queue/stream must not make any peer online.
+## tools/customization/board_router.py (38 lines) - board router (customization)
+- `_checked_key` (def)
+- `api_get_board` (def) [GET /customization/boards/{board_key}] - The signed-in user's saved board, or `state: null` if they have not customized it yet.
+- `api_save_board` (def) [PUT /customization/boards/{board_key}]
+- `api_reset_board` (def) [DELETE /customization/boards/{board_key}] - Reset to the default layout by removing the user's saved board.
 
 ## tools/dashboard/dashboard.py (55 lines) - dashboard (dashboard)
 - `overview` (def) [GET /overview]
