@@ -1,14 +1,11 @@
 #!/bin/sh
-# Auto-generate .agents/code-map.md and .agents/project-index.md before commit
-if [ -f .agents/gen_code_map.mjs ]; then
-  if command -v node >/dev/null 2>&1; then
-    node .agents/gen_code_map.mjs >/dev/null 2>&1
-    if [ -f .agents/code-map.md ]; then
-      git add .agents/code-map.md
-    fi
-    if [ -f .agents/project-index.md ]; then
-      git add .agents/project-index.md
-    fi
+# Before each commit: refresh the agent code maps, and stop source files growing past the size limit.
+if command -v node >/dev/null 2>&1; then
+  if [ -f .agents/gen_code_map.mjs ]; then
+    node .agents/gen_code_map.mjs >/dev/null 2>&1 && git add -A -- .agents/code-map.md .agents/code-map .agents/project-index.md 2>/dev/null
+  fi
+  if [ -f .agents/check_file_sizes.mjs ]; then
+    node .agents/check_file_sizes.mjs || { echo "Commit blocked: split the file(s) above into smaller modules."; exit 1; }
   fi
 fi
 exit 0

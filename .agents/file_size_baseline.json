@@ -1,0 +1,37 @@
+{
+  "limit": 500,
+  "files": {
+    "mcp_tools/__init__.py": {
+      "max_lines": 993,
+      "reason": "Over the limit when the check was introduced; split it when you next work on it."
+    },
+    "server.py": {
+      "max_lines": 600,
+      "reason": "Over the limit when the check was introduced; split it when you next work on it."
+    },
+    "services/integration/services/admin_integration_service.py": {
+      "max_lines": 1345,
+      "reason": "Over the limit when the check was introduced; split it when you next work on it."
+    },
+    "services/integration/services/finance_integration_service.py": {
+      "max_lines": 516,
+      "reason": "Over the limit when the check was introduced; split it when you next work on it."
+    },
+    "services/notifications/rabbitmq_service.py": {
+      "max_lines": 1161,
+      "reason": "Over the limit when the check was introduced; split it when you next work on it."
+    },
+    "services/shared/rbac_service.py": {
+      "max_lines": 557,
+      "reason": "Over the limit when the check was introduced; split it when you next work on it."
+    },
+    "tools/integration/ceo_integration_router.py": {
+      "max_lines": 746,
+      "reason": "Over the limit when the check was introduced; split it when you next work on it."
+    },
+    "tools/integration/workflow_assignment_router.py": {
+      "max_lines": 636,
+      "reason": "Over the limit when the check was introduced; split it when you next work on it."
+    }
+  }
+}

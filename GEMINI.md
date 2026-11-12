@@ -79,6 +79,16 @@ These rules apply to every AI coding agent working in this repository.
 - Do not introduce additional dependencies without justification.
 - Ask before performing destructive database or infrastructure operations.
 
+### 0.5.1 Keep Files Small and Modular
+
+- No source file over **500 lines**; aim for under 300. Keep functions and components under about 80 lines.
+- Adding a feature means adding a module, not appending to a big file: put it in its own file (or a folder named after the feature) next to the code it belongs with, and import it.
+- Before an edit would push a file past 500 lines, split it first: move each cohesive part (a group of related functions, a sub-component, a hook, the types) into its own module, and keep the original file's exports working (re-export) so imports elsewhere don't break.
+- One job per file. Backend: routers stay thin, logic lives in services, queries in the service or repository, request/response shapes in models. Frontend: pages compose components, data fetching and state live in hooks, API calls in services, shared types in types.
+- Follow the layout in `.agents/rules/project-structure.md` (when present) and the folders that already exist; never create a parallel structure.
+- Files already over the limit are listed in `.agents/file_size_baseline.json` and may only shrink. Never raise a ceiling or add a file to the baseline: split the file instead. After shrinking one, run `node .agents/check_file_sizes.mjs --update`.
+- Before finishing, run `node .agents/check_file_sizes.mjs`. The pre-commit hook and CI run it too, and fail when a file is too big.
+
 ### 0.6 Verification
 
 - Run `py_compile` for touched backend files.
