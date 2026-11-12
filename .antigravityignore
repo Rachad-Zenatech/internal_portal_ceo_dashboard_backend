@@ -1,0 +1,21 @@
+# Kept out of Antigravity's index and agent context (gitignore syntax). Big, generated or private: never source.
+venv/
+.venv/
+env/
+node_modules/
+dist/
+build/
+coverage/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.next/
+.vite/
+uploads/
+storage/
+*.log
+.env
+.env.*
+!.env.example

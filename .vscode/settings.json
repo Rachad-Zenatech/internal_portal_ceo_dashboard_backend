@@ -1,4 +1,31 @@
 {
     "python-envs.defaultEnvManager": "ms-python.python:venv",
-    "python.defaultInterpreterPath": "/mnt/c/dev/enterprise_system/mcp-server/venv/bin/python"
+    "python.defaultInterpreterPath": "/mnt/c/dev/enterprise_system/mcp-server/venv/bin/python",
+    "files.watcherExclude": {
+        "**/venv": true,
+        "**/.venv": true,
+        "**/node_modules": true,
+        "**/__pycache__": true,
+        "**/.pytest_cache": true,
+        "**/dist": true
+    },
+    "search.exclude": {
+        "**/venv": true,
+        "**/.venv": true,
+        "**/node_modules": true,
+        "**/__pycache__": true,
+        "**/.pytest_cache": true,
+        "**/dist": true
+    },
+    "files.exclude": {
+        "**/venv": true,
+        "**/.venv": true,
+        "**/__pycache__": true,
+        "**/.pytest_cache": true
+    },
+    "python.analysis.exclude": [
+        "**/venv",
+        "**/.venv",
+        "**/node_modules"
+    ]
 }

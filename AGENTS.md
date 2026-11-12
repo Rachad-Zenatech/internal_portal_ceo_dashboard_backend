@@ -12,8 +12,8 @@ Architectural standards are in `.agents/rules/` and loaded only when relevant:
 Every AI agent working in this repository MUST follow this sequence before touching or reading code:
 1. **Never scan, glob, or read arbitrary source files or directories.**
 2. **First step for orientation:** Read `.agents/project-index.md` to identify the relevant module and directory layout.
-3. **Second step for symbols & functions:** Grep `.agents/code-map.md` for the exact function, class, or route name.
-4. **Third step for reading code:** Read ONLY the specific line range identified in `.agents/code-map.md` (never read entire files >400 lines).
+3. **Second step for symbols & functions:** Grep `.agents/code-map/` (one small file per source folder, listed in `.agents/code-map.md`) for the exact function, class, or route name. Never read a map file whole.
+4. **Third step for reading code:** Read ONLY the line range the map gives (each symbol shows its start line, `L<n>`; read to the next symbol's line). Never read entire files >400 lines.
 5. **After adding, moving, or renaming functions:** Regenerate the map immediately via `node .agents/gen_code_map.mjs`.
 
 Violating this order wastes context budget and violates repository execution rules.
@@ -32,8 +32,8 @@ These rules apply to every AI coding agent working in this repository.
 - Do not repeatedly read files already inspected.
 - Do not load large documentation files unless directly relevant.
 - Prefer targeted searches over broad searches.
-- Before opening a source file, search `.agents/code-map.md` for the file or function name (grep it; do not read the whole map) and read only the line range you need.
-- For orientation (directory layout, what each area does), read `.agents/project-index.md` first; it is a short overview. Use `.agents/code-map.md` only for symbol-level lookups.
+- Before opening a source file, grep `.agents/code-map/` for the file or function name (do not read map files whole) and read only the line range it gives (`L<n>`).
+- For orientation (directory layout, what each area does), read `.agents/project-index.md` first; it is a short overview. Use `.agents/code-map/` only for symbol-level lookups.
 - Do not read files over 400 lines in full, and do not re-read a line range already read in the same task.
 - After adding, moving or renaming functions, regenerate the map: `node .agents/gen_code_map.mjs`.
 - Do not summarize or re-analyze the entire codebase unnecessarily.
