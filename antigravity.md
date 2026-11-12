@@ -79,15 +79,25 @@ These rules apply to every AI coding agent working in this repository.
 - Do not introduce additional dependencies without justification.
 - Ask before performing destructive database or infrastructure operations.
 
-### 0.5.1 Keep Files Small and Modular
+### 0.5.1 Organize Code by Functionality
 
-- No source file over **500 lines**; aim for under 300. Keep functions and components under about 80 lines.
-- Adding a feature means adding a module, not appending to a big file: put it in its own file (or a folder named after the feature) next to the code it belongs with, and import it.
-- Before an edit would push a file past 500 lines, split it first: move each cohesive part (a group of related functions, a sub-component, a hook, the types) into its own module, and keep the original file's exports working (re-export) so imports elsewhere don't break.
-- One job per file. Backend: routers stay thin, logic lives in services, queries in the service or repository, request/response shapes in models. Frontend: pages compose components, data fetching and state live in hooks, API calls in services, shared types in types.
-- Follow the layout in `.agents/rules/project-structure.md` (when present) and the folders that already exist; never create a parallel structure.
-- Files already over the limit are listed in `.agents/file_size_baseline.json` and may only shrink. Never raise a ceiling or add a file to the baseline: split the file instead. After shrinking one, run `node .agents/check_file_sizes.mjs --update`.
-- Before finishing, run `node .agents/check_file_sizes.mjs`. The pre-commit hook and CI run it too, and fail when a file is too big.
+Structure code by what it does. The size limits at the end are only the safety net.
+
+- **One feature or responsibility per module.** A new feature gets its own module (a file, or a folder named after the feature holding its parts) next to the code it belongs with. Never append it to an unrelated or already large file.
+- **Keep the layers apart.** Backend: routers only read the request and call a service; logic lives in services (one per feature area); SQL in the service or a repository module; request/response shapes in models. Frontend: pages only lay out sections; data fetching and state live in hooks (`useXxx`); API calls in services; shared types in `types/`.
+- **Follow the existing layout** (`.agents/rules/project-structure.md` when present, and the folders already there). Never create a parallel structure.
+- **When a file or function does several jobs, split it along those jobs,** and keep the original exports working (re-export) so imports elsewhere don't break.
+
+**Frontend: keep each component's `return` short** (80 lines at most; aim for under 40):
+
+- The `return` should read like an outline: `<PageHeader />`, `<Filters />`, `<ResultsTable />`, `<EditDialog />`. Each visual section (header, toolbar, filters, table, list item, form section, dialog, empty/loading/error state) becomes its own component in the feature's folder.
+- Handle loading, error and empty states with early returns before the main `return`.
+- No logic inside JSX: compute values, handlers and filtered lists above the `return` or in a hook. Replace long inline `cond ? (...) : (...)` branches and `.map(...)` bodies with a named component (e.g. `<SubmissionRow item={s} />`).
+- Repeated markup becomes a component; long `className` strings become a variant or a named constant.
+
+**Backend: keep each function under 120 lines;** move steps into helper functions or their own module.
+
+**Safety net (checked by `node .agents/check_file_sizes.mjs`, the pre-commit hook and CI):** files at most 500 lines, JSX returns at most 80, Python functions at most 120. What was already over a limit is listed in `.agents/file_size_baseline.json` and may only shrink: never raise a ceiling or add an entry; split the code instead, then run `node .agents/check_file_sizes.mjs --update`. Run the check before finishing.
 
 ### 0.6 Verification
 

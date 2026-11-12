@@ -1,5 +1,9 @@
 {
   "limit": 500,
+  "block_limits": {
+    "jsx_return": 80,
+    "py_function": 120
+  },
   "files": {
     "mcp_tools/__init__.py": {
       "max_lines": 993,
@@ -32,6 +36,60 @@
     "tools/integration/workflow_assignment_router.py": {
       "max_lines": 636,
       "reason": "Over the limit when the check was introduced; split it when you next work on it."
+    }
+  },
+  "blocks": {
+    "postgresql_db/schemas/cross_service_schema.py#ensure_cross_service_schema": {
+      "max_lines": 227,
+      "kind": "py_function"
+    },
+    "postgresql_db/schemas/setup_pbac_schema.py#setup": {
+      "max_lines": 244,
+      "kind": "py_function"
+    },
+    "services/integration/commands/admin_command_processor.py#AdminCommandProcessor.process_command": {
+      "max_lines": 232,
+      "kind": "py_function"
+    },
+    "services/integration/commands/command_service.py#CommandService.submit_command": {
+      "max_lines": 268,
+      "kind": "py_function"
+    },
+    "services/integration/commands/ma_command_processor.py#MACommandProcessor.process_command": {
+      "max_lines": 138,
+      "kind": "py_function"
+    },
+    "services/integration/commands/result_consumer.py#ResultConsumer.handle_incoming_message": {
+      "max_lines": 172,
+      "kind": "py_function"
+    },
+    "services/integration/services/admin_integration_service.py#_enrich_purchase_request_multi_currency": {
+      "max_lines": 139,
+      "kind": "py_function"
+    },
+    "services/notifications/rabbitmq_service.py#RabbitMQManager._build_hub_live_status": {
+      "max_lines": 224,
+      "kind": "py_function"
+    },
+    "services/reports/report_service.py#generate_excel_reconciliation_report": {
+      "max_lines": 246,
+      "kind": "py_function"
+    },
+    "tools/integration/approver_roles_router.py#get_approver_role_members": {
+      "max_lines": 127,
+      "kind": "py_function"
+    },
+    "tools/integration/ceo_integration_router.py#execute_bulk_approval_action": {
+      "max_lines": 128,
+      "kind": "py_function"
+    },
+    "tools/integration/workflow_assignment_router.py#_update_workflow_projection": {
+      "max_lines": 138,
+      "kind": "py_function"
+    },
+    "tools/integration/workflow_assignment_router.py#get_assignments": {
+      "max_lines": 144,
+      "kind": "py_function"
     }
   }
 }
