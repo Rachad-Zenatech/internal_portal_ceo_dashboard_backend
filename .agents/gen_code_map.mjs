@@ -197,12 +197,12 @@ for (const item of fileData) {
   byFolder.get(key).push(item);
 }
 
-rmSync(OUT_MAP_DIR, { recursive: true, force: true }); // folders that no longer exist leave no stale map behind
-mkdirSync(OUT_MAP_DIR, { recursive: true });
-const written = [];
-for (const [key, items] of [...byFolder.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+// A folder map larger than this is written as one map per source file instead, so no single read is large.
+const MAX_MAP_BYTES = 30 * 1024;
+
+function mapText(title, items) {
   const parts = [
-    `# Code map: ${key === "_root" ? "(project root)" : items[0].f.slice(0, items[0].f.lastIndexOf("/"))}`,
+    `# Code map: ${title}`,
     "",
     GENERATED,
     "",
@@ -220,9 +220,27 @@ for (const [key, items] of [...byFolder.entries()].sort(([a], [b]) => a.localeCo
     }
     parts.push("");
   }
-  const text = parts.join("\n");
+  return parts.join("\n");
+}
+
+rmSync(OUT_MAP_DIR, { recursive: true, force: true }); // folders that no longer exist leave no stale map behind
+mkdirSync(OUT_MAP_DIR, { recursive: true });
+const written = [];
+const writeMap = (key, title, items) => {
+  const text = mapText(title, items);
   writeFileSync(join(OUT_MAP_DIR, `${key}.md`), text);
   written.push({ key, files: items.length, kb: Math.max(1, Math.round(Buffer.byteLength(text) / 1024)) });
+};
+for (const [key, items] of [...byFolder.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+  const folder = key === "_root" ? "(project root)" : items[0].f.slice(0, items[0].f.lastIndexOf("/"));
+  if (items.length > 1 && Buffer.byteLength(mapText(folder, items)) > MAX_MAP_BYTES) {
+    for (const item of items) {
+      const base = item.f.slice(item.f.lastIndexOf("/") + 1).replace(/\.[^.]+$/, "");
+      writeMap(`${key}__${base}`, item.f, [item]);
+    }
+  } else {
+    writeMap(key, folder, items);
+  }
 }
 console.log(`Wrote ${OUT_MAP_DIR} (${written.length} folder maps, ${fileData.length} files)`);
 
