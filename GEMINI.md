@@ -64,11 +64,11 @@ These rules apply to every AI coding agent working in this repository.
 
 ### 0.4.1 Search and Read With Built-in Tools, Not the Shell
 
-- Search code with the agent's built-in search tool (Antigravity: `grep_search`; Claude Code: Grep), never `run_command` with `Select-String`, `grep`, `rg`, `findstr` or `Get-ChildItem -Recurse`.
-- Read files with the built-in viewer and a line range (Antigravity: `view_file`; Claude Code: Read with offset/limit), never `Get-Content`, `cat` or `type`.
-- Find files with the built-in finder (Antigravity: `find_by_name` / `list_dir`; Claude Code: Glob), not shell listings.
-- Use `run_command` only for work that needs a shell: tests, builds, type checks, running servers, installs and git.
-- Why: built-in tools run without an approval prompt and return trimmed results; shell searches wait for approval and flood the context.
+- Gemini CLI: search code with **`search_file_content`**, read with **`read_file`** (with `offset`/`limit` set to the range the code map gives), find files with **`glob`** or **`list_directory`**.
+- Antigravity (also reads this file): search with **`grep_search`**, read with **`view_file`** and a start/end line, find files with **`find_by_name`** or **`list_dir`**.
+- Never search or read through the shell (`run_shell_command` / `run_command` with `Select-String`, `grep`, `rg`, `findstr`, `Get-Content`, `cat`).
+- Use the shell only for work that needs it: tests, builds, type checks, running servers, installs and git.
+- Why: built-in tools run without an approval prompt and return trimmed results; shell searches can wait for approval and flood the context.
 
 ### 0.5 Implementation Scope
 

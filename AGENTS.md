@@ -64,11 +64,11 @@ These rules apply to every AI coding agent working in this repository.
 
 ### 0.4.1 Search and Read With Built-in Tools, Not the Shell
 
-- Search code with the agent's built-in search tool (Antigravity: `grep_search`; Claude Code: Grep), never `run_command` with `Select-String`, `grep`, `rg`, `findstr` or `Get-ChildItem -Recurse`.
-- Read files with the built-in viewer and a line range (Antigravity: `view_file`; Claude Code: Read with offset/limit), never `Get-Content`, `cat` or `type`.
-- Find files with the built-in finder (Antigravity: `find_by_name` / `list_dir`; Claude Code: Glob), not shell listings.
-- Use `run_command` only for work that needs a shell: tests, builds, type checks, running servers, installs and git.
-- Why: built-in tools run without an approval prompt and return trimmed results; shell searches wait for approval and flood the context.
+- Search, read and find files with your agent's own built-in tools when it has them (e.g. Cursor: codebase search and read file; Copilot: search and read tools), not the shell.
+- Read only the line range the code map gives, never whole files over 400 lines.
+- If your agent only has a shell, search with `rg` (or `git grep`) limited to the paths you need, and print only the lines you need (`sed -n 'START,ENDp'`), never whole files or the whole map.
+- Use the shell for work that needs it: tests, builds, type checks, running servers, installs and git.
+- Why: built-in tools run without an approval prompt and return trimmed results; shell searches can wait for approval and flood the context.
 
 ### 0.5 Implementation Scope
 
