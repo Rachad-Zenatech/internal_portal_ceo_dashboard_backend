@@ -26,6 +26,13 @@ These rules apply to every AI coding agent working in this repository.
 
 ### 0.1.1 Minimize Context Consumption
 
+- **Automatic Task Isolation & Context Pruning**:
+  - Evaluate if each new user request relates directly to the immediate prior task.
+  - If a new request is not directly related to what was just being done (e.g., Task 1 and 2 were related, but Task 3 starts a different topic or bug), start a completely clean train of thought without closing the session.
+  - Discard and ignore earlier conversational turns, past terminal traces, previous git diffs, and unrelated file inspections.
+  - Execute solely against the symbols and files required for the current assignment using `.agents/code-map/`.
+  - When a major task is complete or roughly 15-20 turns have accumulated, proactively recommend `/compact` to purge raw logs and keep latency minimal.
+
 - Do not scan the entire repository for individual assignments.
 - Use the existing Project Structure documentation to locate relevant files.
 - Read only files necessary to complete the requested task.
