@@ -53,6 +53,7 @@ For function and route definitions with their line numbers, grep `.agents/code-m
 - services/shared/cache_service.py (101 lines) - Cache Management and Invalidation Service Provides local in-memory caching utilities and asynchronous cache invalidation propagation acro...
 - services/shared/logging_service.py (179 lines) - Structured application logging suitable for container stdout and CloudWatch Logs.
 - services/shared/rbac_service.py (558 lines) - Utility for audit logging
+- services/shared/secret_config.py (18 lines) - Validated secret lookup from environment variables with no hardcoded fallbacks.
 - services/shared/service_security_policy.py (201 lines) - Enterprise Application Security & Scope Authorization Policy Defines the strict Application-to-Application Access Matrix (Machine-to-Mach...
 - services/uploads/s3_storage_service.py (148 lines) - s3 storage service (uploads)
 - services/uploads/upload_archive_service.py (224 lines) - upload archive service (uploads)

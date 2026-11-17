@@ -18,7 +18,7 @@ from services.integration.services.integration_resilience import (
     execute_resilient_call,
     resilient_cache,
 )
-
+from services.shared.secret_config import require_secret
 logger = logging.getLogger(__name__)
 
 ADMIN_API_BASE = os.getenv("ADMIN_PORTAL_API_URL", os.getenv("ADMIN_API_BASE", "http://127.0.0.1:8002")).rstrip("/")
@@ -32,7 +32,7 @@ TIMEOUT_SECONDS = float(os.getenv("INTEGRATION_TIMEOUT_SECONDS", "5.0"))
 CONNECT_TIMEOUT = 2.0
 HARD_TIMEOUT_SECONDS = float(os.getenv("HARD_TIMEOUT_SECONDS", "15.0"))
 
-JWT_SECRET = os.environ.get("JWT_SECRET") or os.environ.get("SESSION_SECRET") or "OU2YW8HGoJJMb7+aAVjoxRXah2gSUtvPLPlzK8G6j9c="
+JWT_SECRET = require_secret("JWT_SECRET", "SESSION_SECRET")
 JWT_ALGORITHM = "HS256"
 JWT_ISSUER = "zenatech-internal-portal"
 

@@ -10,11 +10,11 @@ from typing import Dict, List, Set, Optional, Any
 from fastapi import HTTPException, Security, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
-import os
+from services.shared.secret_config import require_secret
 
 logger = logging.getLogger(__name__)
 
-JWT_SECRET = os.environ.get("SESSION_SECRET") or os.environ.get("JWT_SECRET") or "OU2YW8HGoJJMb7+aAVjoxRXah2gSUtvPLPlzK8G6j9c="
+JWT_SECRET = require_secret("SESSION_SECRET", "JWT_SECRET")
 JWT_ALGORITHM = "HS256"
 JWT_ISSUER = "zenatech-internal-portal"
 
