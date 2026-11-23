@@ -4,16 +4,17 @@
 
 Each symbol shows its start line (`L<n>`); read from there to the next symbol's line, not the whole file.
 
-## services/shared/audit_sync_service.py (271 lines) - Cross-project audit log ingestion for CEO Dashboard over RabbitMQ Message Hub.
-- `ensure_audit_sync_columns` (def) L32 - Idempotently add cross-project metadata columns to audit_logs.
-- `_parse_uuid` (def) L54
-- `_parse_timestamp` (def) L63
-- `_to_json_str` (def) L74
-- `ingest_synced_audit_log` (def) L85 - Persist an audit log published from any project into CEO audit_logs and ceo_audit_logs.
-- `list_synced_audit_logs` (def) L188 - Fetch local + cross-project synced audit logs for CEO Dashboard.
-- `apply_urgent_override_fields` (def) L224 - Attach urgent payable override flags, priority, and reason onto parsed purchase request dicts.
-- `_history_sort_key` (def) L237
-- `sort_approval_history_desc` (def) L267 - Sort approval history items newest-first by approval/override/creation date descending.
+## services/shared/audit_sync_service.py (321 lines) - Cross-project audit log ingestion for CEO Dashboard over RabbitMQ Message Hub.
+- `_normalize_source_service` (def) L58
+- `ensure_audit_sync_columns` (def) L63 - Idempotently add cross-project metadata columns and widen legacy uuid/inet columns on audit_logs.
+- `_parse_uuid` (def) L104
+- `_parse_timestamp` (def) L113
+- `_to_json_str` (def) L124
+- `ingest_synced_audit_log` (def) L135 - Persist an audit log published from any project into CEO audit_logs and ceo_audit_logs.
+- `list_synced_audit_logs` (def) L238 - Fetch local + cross-project synced audit logs for CEO Dashboard.
+- `apply_urgent_override_fields` (def) L274 - Attach urgent payable override flags, priority, and reason onto parsed purchase request dicts.
+- `_history_sort_key` (def) L287
+- `sort_approval_history_desc` (def) L317 - Sort approval history items newest-first by approval/override/creation date descending.
 
 ## services/shared/auth_service.py (424 lines) - Create token
 - `create_access_token` (def) L25
@@ -53,33 +54,33 @@ Each symbol shows its start line (`L<n>`); read from there to the next symbol's 
 - `create_background_task` (def) L131 - Creates a background task, retains a strong reference to prevent GC while pending,
 - `asyncio_exception_handler` (def) L149 - Capture detached asyncio failures with full task diagnostics.
 
-## services/shared/rbac_service.py (538 lines) - Utility for audit logging
+## services/shared/rbac_service.py (540 lines) - Utility for audit logging
 - `log_audit` (def) L10
-- `get_audit_logs` (def) L22
-- `_public_user` (def) L39
-- `get_all_users` (def) L44
-- `get_user_by_id` (def) L78
-- `create_user` (def) L87
-- `update_user` (def) L113
-- `delete_user` (def) L170
-- `get_all_roles` (def) L198
-- `get_role_tree` (def) L202
-- `get_role_by_id` (def) L270
-- `create_role` (def) L274
-- `update_role` (def) L288
-- `delete_role` (def) L361
-- `get_user_roles` (def) L378
-- `set_user_roles` (def) L387
-- `get_role_navigation_permissions` (def) L406
-- `update_role_navigation_permissions` (def) L416
-- `get_role_mcp_tool_permissions` (def) L432
-- `update_role_mcp_tool_permissions` (def) L441
-- `log_login_activity` (def) L457
-- `get_login_activity_logs` (def) L466
-- `log_audit_action` (def) L478
-- `get_permission_modules` (def) L485
-- `get_role_permission_groups` (def) L517
-- `update_role_permission_groups` (def) L522
+- `get_audit_logs` (def) L24
+- `_public_user` (def) L41
+- `get_all_users` (def) L46
+- `get_user_by_id` (def) L80
+- `create_user` (def) L89
+- `update_user` (def) L115
+- `delete_user` (def) L172
+- `get_all_roles` (def) L200
+- `get_role_tree` (def) L204
+- `get_role_by_id` (def) L272
+- `create_role` (def) L276
+- `update_role` (def) L290
+- `delete_role` (def) L363
+- `get_user_roles` (def) L380
+- `set_user_roles` (def) L389
+- `get_role_navigation_permissions` (def) L408
+- `update_role_navigation_permissions` (def) L418
+- `get_role_mcp_tool_permissions` (def) L434
+- `update_role_mcp_tool_permissions` (def) L443
+- `log_login_activity` (def) L459
+- `get_login_activity_logs` (def) L468
+- `log_audit_action` (def) L480
+- `get_permission_modules` (def) L487
+- `get_role_permission_groups` (def) L519
+- `update_role_permission_groups` (def) L524
 
 ## services/shared/secret_config.py (18 lines) - Validated secret lookup from environment variables with no hardcoded fallbacks.
 - `require_secret` (def) L6 - Return the first configured secret meeting min_length, or raise RuntimeError.

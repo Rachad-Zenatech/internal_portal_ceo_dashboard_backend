@@ -15,8 +15,10 @@ async def log_audit(conn, actor_id: UUID, action: str, entity_type: str, entity_
     old_json = json.dumps(old_value, default=str) if old_value else None
     new_json = json.dumps(new_value, default=str) if new_value else None
     
-    # inet type requires string, but asyncpg handles it if passed as string
-    await conn.execute(sql, actor_id, action, entity_type, entity_id, old_json, new_json, ip, ua)
+    # Coerce entity_id and ip to strings so they work with VARCHAR(255) columns
+    entity_id_str = str(entity_id) if entity_id is not None else None
+    ip_str = str(ip) if ip is not None else None
+    await conn.execute(sql, actor_id, action, entity_type, entity_id_str, old_json, new_json, ip_str, ua)
 
 # --- AUDIT LOGS ---
 async def get_audit_logs():

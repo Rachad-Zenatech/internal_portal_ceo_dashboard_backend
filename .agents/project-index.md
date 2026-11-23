@@ -50,11 +50,11 @@ For function and route definitions with their line numbers, grep `.agents/code-m
 - services/notifications/notification_service.py (222 lines) - notification service (notifications)
 - services/notifications/rabbitmq_service.py (1158 lines) - RabbitMQ Service & Topology Manager Provides resilient connection management, topology declaration, publisher confirmations, and dead-let...
 - services/reports/report_service.py (388 lines) - services/reports/report_service.py
-- services/shared/audit_sync_service.py (271 lines) - Cross-project audit log ingestion for CEO Dashboard over RabbitMQ Message Hub.
+- services/shared/audit_sync_service.py (321 lines) - Cross-project audit log ingestion for CEO Dashboard over RabbitMQ Message Hub.
 - services/shared/auth_service.py (424 lines) - Create token
 - services/shared/cache_service.py (101 lines) - Cache Management and Invalidation Service Provides local in-memory caching utilities and asynchronous cache invalidation propagation acro...
 - services/shared/logging_service.py (179 lines) - Structured application logging suitable for container stdout and CloudWatch Logs.
-- services/shared/rbac_service.py (538 lines) - Utility for audit logging
+- services/shared/rbac_service.py (540 lines) - Utility for audit logging
 - services/shared/secret_config.py (18 lines) - Validated secret lookup from environment variables with no hardcoded fallbacks.
 - services/shared/service_security_policy.py (201 lines) - Enterprise Application Security & Scope Authorization Policy Defines the strict Application-to-Application Access Matrix (Machine-to-Mach...
 - services/uploads/s3_storage_service.py (148 lines) - s3 storage service (uploads)

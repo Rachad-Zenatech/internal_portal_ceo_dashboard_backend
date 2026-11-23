@@ -28,9 +28,40 @@ SERVICE_DISPLAY_NAMES: Dict[str, str] = {
     "template_automation": "Template Automation",
 }
 
+CANONICAL_SERVICE_KEYS: Dict[str, str] = {
+    "ceo": "ceo",
+    "ceo_dashboard": "ceo",
+    "ceo-dashboard": "ceo",
+    "administration": "administration",
+    "admin": "administration",
+    "ma": "ma",
+    "m7a": "ma",
+    "finance": "finance",
+    "marketing": "marketing",
+    "real_estate": "real_estate",
+    "real-estate": "real_estate",
+    "social_media_compliance": "social_media_compliance",
+    "social-media-compliance": "social_media_compliance",
+    "social_media": "social_media_compliance",
+    "social-media": "social_media_compliance",
+    "compliance": "social_media_compliance",
+    "travel": "travel",
+    "sec_filing": "sec_filing",
+    "sec-filing": "sec_filing",
+    "share_document": "sec_filing",
+    "share-document": "sec_filing",
+    "template_automation": "template_automation",
+    "template-automation": "template_automation",
+}
+
+
+def _normalize_source_service(raw: Any) -> str:
+    key = str(raw or "unknown").strip().lower().replace(" ", "_")
+    return CANONICAL_SERVICE_KEYS.get(key, key or "unknown")
+
 
 async def ensure_audit_sync_columns(conn) -> None:
-    """Idempotently add cross-project metadata columns to audit_logs."""
+    """Idempotently add cross-project metadata columns and widen legacy uuid/inet columns on audit_logs."""
     global _schema_ready
     if _schema_ready:
         return
@@ -44,6 +75,25 @@ async def ensure_audit_sync_columns(conn) -> None:
             CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_logs_source_event_id
                 ON audit_logs (source_event_id)
                 WHERE source_event_id IS NOT NULL;
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = 'audit_logs'
+                      AND column_name = 'entity_id' AND data_type NOT IN ('character varying', 'text')
+                ) THEN
+                    ALTER TABLE public.audit_logs
+                        ALTER COLUMN entity_id TYPE VARCHAR(255) USING entity_id::text;
+                END IF;
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = 'audit_logs'
+                      AND column_name = 'ip_address' AND data_type NOT IN ('character varying', 'text')
+                ) THEN
+                    ALTER TABLE public.audit_logs
+                        ALTER COLUMN ip_address TYPE VARCHAR(255) USING ip_address::text;
+                END IF;
+            END $$;
             """
         )
         _schema_ready = True
@@ -84,18 +134,18 @@ def _to_json_str(val: Any) -> Optional[str]:
 
 async def ingest_synced_audit_log(message: Dict[str, Any]) -> bool:
     """Persist an audit log published from any project into CEO audit_logs and ceo_audit_logs."""
-    source_service = str(message.get("source_service") or message.get("service") or "unknown").strip().lower()
+    source_service = _normalize_source_service(message.get("source_service") or message.get("service"))
     source_label = str(message.get("source_label") or SERVICE_DISPLAY_NAMES.get(source_service, source_service.title()))
     action = str(message.get("action") or "SYSTEM_EVENT").strip()[:255]
     entity_type = str(message.get("entity_type") or "System").strip()[:255]
-    entity_id = str(message.get("entity_id") or "").strip()[:255]
+    entity_id = str(message.get("entity_id") or "").strip()[:255] or None
     actor_user_id = _parse_uuid(message.get("actor_user_id"))
-    actor_name = (str(message.get("actor_name")).strip()[:255]) if message.get("actor_name") else None
-    actor_email = (str(message.get("actor_email")).strip()[:255]) if message.get("actor_email") else None
+    actor_name = (str(message.get("actor_name")).strip()[:255] or None) if message.get("actor_name") is not None else None
+    actor_email = (str(message.get("actor_email")).strip()[:255] or None) if message.get("actor_email") is not None else None
     event_id = str(message.get("event_id") or "").strip()[:128] or None
     old_val = message.get("old_value")
     new_val = message.get("new_value")
-    ip_address = (str(message.get("ip_address")).strip()[:255]) if message.get("ip_address") else None
+    ip_address = (str(message.get("ip_address")).strip()[:255] or None) if message.get("ip_address") is not None else None
     user_agent = str(message.get("user_agent")) if message.get("user_agent") else None
     created_at = _parse_timestamp(message.get("created_at") or message.get("timestamp"))
 
@@ -132,8 +182,8 @@ async def ingest_synced_audit_log(message: Dict[str, Any]) -> bool:
 
         # Mirror into ceo_audit_logs for the executive dashboard Audit Trail tab
         try:
-            target_entity = f"{entity_type} #{entity_id}" if entity_id else entity_type
-            requested_by = actor_name or actor_email or (str(actor_user_id) if actor_user_id else "System")
+            target_entity = (f"{entity_type} #{entity_id}" if entity_id else entity_type)[:100]
+            requested_by = (actor_name or actor_email or (str(actor_user_id) if actor_user_id else "System"))[:255]
             details_payload = {
                 "source_service": source_service,
                 "source_label": source_label,
@@ -151,8 +201,8 @@ async def ingest_synced_audit_log(message: Dict[str, Any]) -> bool:
                 )
                 VALUES ($1, $2, 'ceo_dashboard', $3, $4, 'SYNCED', $5, $6)
                 """,
-                action,
-                source_label,
+                action[:100],
+                source_label[:100],
                 target_entity,
                 requested_by,
                 json.dumps(details_payload, default=str),
