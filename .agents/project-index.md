@@ -38,7 +38,7 @@ For function and route definitions with their line numbers, grep `.agents/code-m
 - services/integration/connectors/base_connector.py (131 lines) - Base Service Connector Defines the abstract interface and standard envelopes for service connectors in the CEO Dashboard.
 - services/integration/connectors/connector_registry.py (36 lines) - Connector Registry Maintains typed registrations for all service connectors in the CEO Dashboard ecosystem.
 - services/integration/connectors/ma_connector.py (186 lines) - M&A Service Connector Handles Mergers & Acquisitions domain commands, results, and local projection synchronization.
-- services/integration/services/admin_integration_service.py (1346 lines) - admin integration service (integration services)
+- services/integration/services/admin_integration_service.py (1344 lines) - admin integration service (integration services)
 - services/integration/services/finance_integration_service.py (517 lines) - Finance & Enterprise System Integration Service Provides resilient machine-to-machine communication with the Finance Backend (enterprise_...
 - services/integration/services/integration_resilience.py (233 lines) - Integration Resilience Layer Provides Circuit Breakers, Hard Timeout Handling, In-Memory Last-Known-Good Caching, and Standardized State ...
 - services/integration/services/projection_service.py (155 lines) - Projection Service Serves local filtered read-models with freshness metadata, decoupling UI reads from remote service availability.
@@ -49,7 +49,7 @@ For function and route definitions with their line numbers, grep `.agents/code-m
 - services/notifications/notification_service.py (222 lines) - notification service (notifications)
 - services/notifications/rabbitmq_service.py (1158 lines) - RabbitMQ Service & Topology Manager Provides resilient connection management, topology declaration, publisher confirmations, and dead-let...
 - services/reports/report_service.py (388 lines) - services/reports/report_service.py
-- services/shared/audit_sync_service.py (236 lines) - Cross-project audit log ingestion for CEO Dashboard over RabbitMQ Message Hub.
+- services/shared/audit_sync_service.py (271 lines) - Cross-project audit log ingestion for CEO Dashboard over RabbitMQ Message Hub.
 - services/shared/auth_service.py (424 lines) - Create token
 - services/shared/cache_service.py (101 lines) - Cache Management and Invalidation Service Provides local in-memory caching utilities and asynchronous cache invalidation propagation acro...
 - services/shared/logging_service.py (179 lines) - Structured application logging suitable for container stdout and CloudWatch Logs.

@@ -233,3 +233,38 @@ def apply_urgent_override_fields(parsed: Dict[str, Any], raw_item: Dict[str, Any
             parsed["approval_note"] = f"Urgent Override: {reason}"
     return parsed
 
+
+def _history_sort_key(item: Dict[str, Any]) -> tuple[float, int]:
+    qd = item.get("quote_data") if isinstance(item.get("quote_data"), dict) else {}
+    ts_val = 0.0
+    for candidate in (
+        item.get("approved_at"),
+        item.get("level_2_approved_at"),
+        item.get("level_1_approved_at"),
+        qd.get("urgent_override_at"),
+        item.get("created_at"),
+        item.get("request_date"),
+    ):
+        if not candidate:
+            continue
+        try:
+            if isinstance(candidate, datetime):
+                dt = candidate if candidate.tzinfo else candidate.replace(tzinfo=timezone.utc)
+            else:
+                s = str(candidate).strip().replace("Z", "+00:00")
+                dt = datetime.fromisoformat(s)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+            ts_val = dt.timestamp()
+            break
+        except Exception:
+            continue
+    raw_id = str(item.get("id") or "")
+    num_id = int(raw_id) if raw_id.isdigit() else 0
+    return (ts_val, num_id)
+
+
+def sort_approval_history_desc(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Sort approval history items newest-first by approval/override/creation date descending."""
+    return sorted(items, key=_history_sort_key, reverse=True)
+

@@ -4,7 +4,7 @@
 
 Each symbol shows its start line (`L<n>`); read from there to the next symbol's line, not the whole file.
 
-## services/shared/audit_sync_service.py (236 lines) - Cross-project audit log ingestion for CEO Dashboard over RabbitMQ Message Hub.
+## services/shared/audit_sync_service.py (271 lines) - Cross-project audit log ingestion for CEO Dashboard over RabbitMQ Message Hub.
 - `ensure_audit_sync_columns` (def) L32 - Idempotently add cross-project metadata columns to audit_logs.
 - `_parse_uuid` (def) L54
 - `_parse_timestamp` (def) L63
@@ -12,6 +12,8 @@ Each symbol shows its start line (`L<n>`); read from there to the next symbol's 
 - `ingest_synced_audit_log` (def) L85 - Persist an audit log published from any project into CEO audit_logs and ceo_audit_logs.
 - `list_synced_audit_logs` (def) L188 - Fetch local + cross-project synced audit logs for CEO Dashboard.
 - `apply_urgent_override_fields` (def) L224 - Attach urgent payable override flags, priority, and reason onto parsed purchase request dicts.
+- `_history_sort_key` (def) L237
+- `sort_approval_history_desc` (def) L267 - Sort approval history items newest-first by approval/override/creation date descending.
 
 ## services/shared/auth_service.py (424 lines) - Create token
 - `create_access_token` (def) L25

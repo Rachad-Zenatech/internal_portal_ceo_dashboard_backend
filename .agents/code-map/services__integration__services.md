@@ -4,7 +4,7 @@
 
 Each symbol shows its start line (`L<n>`); read from there to the next symbol's line, not the whole file.
 
-## services/integration/services/admin_integration_service.py (1346 lines) - admin integration service (integration services)
+## services/integration/services/admin_integration_service.py (1344 lines) - admin integration service (integration services)
 - `_resolve_admin_user_info` (def) L43
 - `_resolve_admin_user_id` (def) L116
 - `_generate_service_token` (def) L121
@@ -21,21 +21,21 @@ Each symbol shows its start line (`L<n>`); read from there to the next symbol's 
 - `sync_admin_records_from_source` (def) L641 - Pulls fresh records from Admin Portal, updates the local PostgreSQL projection store,
 - `get_pending_purchase_requests` (def) L657 - Fetches pending purchasing requests.
 - `get_completed_purchase_requests` (def) L689 - Fetches completed / approved purchasing requests.
-- `get_purchase_request_detail` (def) L720 - Fetches full request details.
-- `execute_purchase_transition` (def) L783 - Executes approval or rejection of a purchase request via Administration Portal.
-- `execute_batch_purchase_transition` (def) L848 - Executes batch approval or rejection of purchase requests via Administration Portal.
-- `_persist_admin_tasks_to_projection` (def) L934 - Upserts administration tasks into PostgreSQL ceo_service_projections in a fast batch.
-- `_get_projected_admin_tasks` (def) L978 - Reads administration tasks from PostgreSQL ceo_service_projections.
-- `get_admin_tasks` (def) L1000 - Fetches administration tasks.
-- `_persist_ma_deals_to_projection` (def) L1029 - Upserts M&A deals into PostgreSQL ceo_service_projections in a fast batch.
-- `_get_projected_ma_deals` (def) L1073 - Reads M&A deals from PostgreSQL ceo_service_projections with pending command overlays.
-- `_request_live_ma_tasks` (def) L1141 - One real call to the M&A service for all pipeline tasks.
-- `_get_live_ma_tasks` (def) L1175 - Live M&A tasks, or None if unavailable.
-    - `_fresh` (def) L1180
-- `get_ma_pipeline_tasks` (def) L1194 - Fetches active M&A acquisition pipeline tasks.
-- `_get_ma_call_log_count` (def) L1216 - Number of call logs, best effort: the summary does not depend on it.
-- `get_ma_pipeline_summary` (def) L1229 - Aggregates executive metrics from the live M&A pipeline, or from the saved PostgreSQL copy when M&A cannot be
-- `get_ma_events` (def) L1315 - Transforms latest M&A pipeline activities and tasks into standard CEO event stream format.
+- `get_purchase_request_detail` (def) L718 - Fetches full request details.
+- `execute_purchase_transition` (def) L781 - Executes approval or rejection of a purchase request via Administration Portal.
+- `execute_batch_purchase_transition` (def) L846 - Executes batch approval or rejection of purchase requests via Administration Portal.
+- `_persist_admin_tasks_to_projection` (def) L932 - Upserts administration tasks into PostgreSQL ceo_service_projections in a fast batch.
+- `_get_projected_admin_tasks` (def) L976 - Reads administration tasks from PostgreSQL ceo_service_projections.
+- `get_admin_tasks` (def) L998 - Fetches administration tasks.
+- `_persist_ma_deals_to_projection` (def) L1027 - Upserts M&A deals into PostgreSQL ceo_service_projections in a fast batch.
+- `_get_projected_ma_deals` (def) L1071 - Reads M&A deals from PostgreSQL ceo_service_projections with pending command overlays.
+- `_request_live_ma_tasks` (def) L1139 - One real call to the M&A service for all pipeline tasks.
+- `_get_live_ma_tasks` (def) L1173 - Live M&A tasks, or None if unavailable.
+    - `_fresh` (def) L1178
+- `get_ma_pipeline_tasks` (def) L1192 - Fetches active M&A acquisition pipeline tasks.
+- `_get_ma_call_log_count` (def) L1214 - Number of call logs, best effort: the summary does not depend on it.
+- `get_ma_pipeline_summary` (def) L1227 - Aggregates executive metrics from the live M&A pipeline, or from the saved PostgreSQL copy when M&A cannot be
+- `get_ma_events` (def) L1313 - Transforms latest M&A pipeline activities and tasks into standard CEO event stream format.
 
 ## services/integration/services/finance_integration_service.py (517 lines) - Finance & Enterprise System Integration Service Provides resilient machine-to-machine communication with the Finance Backend (enterprise_...
 - `CircuitState` (class) L38

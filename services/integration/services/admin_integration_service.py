@@ -703,18 +703,16 @@ async def get_completed_purchase_requests(user_id: Optional[UUID] = None) -> Lis
                 if not is_online:
                     service_status_registry.update_instance_status("admin", "admin-01", "online")
                 await _persist_purchase_requests_to_projection(raw_list)
-                completed = []
-                for r in raw_list:
-                    parsed = _parse_purchase_request_item(r)
-                    if parsed["status"] in ["APPROVED", "COMPLETED", "REJECTED"] or parsed.get("is_urgent_override"):
-                        completed.append(parsed)
-                return completed
+                from services.shared.audit_sync_service import sort_approval_history_desc
+                completed = [p for r in raw_list if (p := _parse_purchase_request_item(r))["status"] in ("APPROVED", "COMPLETED", "REJECTED") or p.get("is_urgent_override")]
+                return sort_approval_history_desc(completed)
         except Exception as exc:
             admin_circuit_breaker.record_failure(exc)
             logger.warning(f"Error fetching live completed requests from Admin Portal: {exc}. Reading local projection.")
 
     # Offline or connection fallback: read from local PostgreSQL projection store
-    return await _get_projected_purchase_requests(status_filter="completed")
+    from services.shared.audit_sync_service import sort_approval_history_desc
+    return sort_approval_history_desc(await _get_projected_purchase_requests(status_filter="completed"))
 
 
 async def get_purchase_request_detail(request_id: str, user_id: Optional[UUID] = None) -> Optional[Dict[str, Any]]:
