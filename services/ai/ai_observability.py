@@ -26,7 +26,7 @@ import uuid
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Tuple
+from typing import Any, AsyncIterator, Callable, Dict, Iterator, List, Optional, Tuple
 from uuid import UUID
 
 from postgresql_db.database import get_pool
