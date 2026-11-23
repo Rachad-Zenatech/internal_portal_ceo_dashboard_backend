@@ -16,7 +16,7 @@ For function and route definitions with their line numbers, grep `.agents/code-m
 - models/notifications/notification_model.py (29 lines) - notification model (notifications)
 - models/shared/rbac_model.py (208 lines) - rbac model (shared)
 - postgresql_db/database.py (335 lines) - Optional dotenv import for loading .env and local overrides during development
-- postgresql_db/schemas/cross_service_schema.py (346 lines) - Cross-Service Persistence Schema Creates tables for: 1.
+- postgresql_db/schemas/cross_service_schema.py (347 lines) - Cross-Service Persistence Schema Creates tables for: 1.
 - postgresql_db/schemas/notifications_schema.py (46 lines) - notifications schema (schemas)
 - postgresql_db/schemas/setup_ai_observability_schema.py (93 lines) - AI observability, caching and usage limits: trace spans for every AI step (model calls, embeddings, tool calls, guard checks, cache looku...
 - postgresql_db/schemas/setup_pbac_schema.py (258 lines) - setup pbac schema (schemas)

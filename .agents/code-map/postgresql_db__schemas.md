@@ -4,8 +4,8 @@
 
 Each symbol shows its start line (`L<n>`); read from there to the next symbol's line, not the whole file.
 
-## postgresql_db/schemas/cross_service_schema.py (346 lines) - Cross-Service Persistence Schema Creates tables for: 1.
-- `ensure_cross_service_schema` (def) L114 - Initializes all cross-service database tables and indices.
+## postgresql_db/schemas/cross_service_schema.py (347 lines) - Cross-Service Persistence Schema Creates tables for: 1.
+- `ensure_cross_service_schema` (def) L115 - Initializes all cross-service database tables and indices.
 
 ## postgresql_db/schemas/notifications_schema.py (46 lines) - notifications schema (schemas)
 - `ensure_notifications_schema` (def) L24

@@ -8,6 +8,7 @@ Creates tables for:
 """
 
 import logging
+import asyncio
 from postgresql_db.database import get_pool
 
 logger = logging.getLogger(__name__)

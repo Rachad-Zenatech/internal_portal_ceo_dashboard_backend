@@ -49,9 +49,15 @@ jobs:
           python -m py_compile server.py
           python -m compileall -q .
 
-      - name: Run Ruff Lint
+      # Real errors fail the build: syntax errors and undefined names.
+      - name: Ruff (errors)
         run: |
-          ruff check . --ignore E501 || true
+          ruff check . --select E9,F63,F7,F82
+
+      # Style issues are reported but don't block yet (there's a backlog of them to clear first).
+      - name: Ruff (style report)
+        run: |
+          ruff check . --ignore E501 --statistics || true
 
       - name: Run Pytest
         run: |
@@ -144,7 +150,7 @@ jobs:
     name: Migrate & Verify Database
     environment: Zenatech
     needs: [lint-and-test, docker-build]
-    if: always() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !contains(needs.*.result, 'cancelled')
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -354,7 +360,7 @@ jobs:
     name: Deploy to EC2
     environment: Zenatech
     needs: [lint-and-test, docker-build, migrate-db]
-    if: always() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !contains(needs.*.result, 'cancelled')
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     env:
       AWS_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY || secrets.AWS_ACCESS_KEY_ID || secrets.ACCESS_KEY }}
