@@ -25,8 +25,9 @@ For function and route definitions with their line numbers, grep `.agents/code-m
 - run_mqtt_broker.py (48 lines) - Local MQTT Broker Runner (Zero External Dependencies) Runs a standalone MQTT broker on 127.0.0.1:1883 using amqtt.
 - server.py (601 lines) - server.py - CEO Executive Dashboard Backend Server
 - services/ai/ai_guardrails.py (249 lines) - AI guardrails: screening what goes into the model and redacting personal data from what comes out.
-- services/ai/ai_observability.py (367 lines) - AI observability: a trace span for every model call, embedding, retrieval, cache lookup, guard check and tool call, plus a prompt log of ...
+- services/ai/ai_observability.py (398 lines) - AI observability: a trace span for every model call, embedding, retrieval, cache lookup, guard check and tool call, plus a prompt log of ...
 - services/ai/ai_usage_service.py (141 lines) - AI Usage Limits Caps how often Gemini runs, so one person (or a stuck loop) can't use up the provider quota or run up cost.
+- services/ai/bedrock_service.py (373 lines) - AWS Bedrock AI Service Adapter.
 - services/customization/board_service.py (53 lines) - board service (customization)
 - services/dashboard/dashboard_service.py (323 lines) - dashboard service (dashboard)
 - services/integration/commands/admin_command_processor.py (341 lines) - Administration Command Processor Consumes and executes commands from the 'administration.commands' queue, invokes authoritative domain lo...

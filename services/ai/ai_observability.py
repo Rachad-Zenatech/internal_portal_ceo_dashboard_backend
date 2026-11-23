@@ -364,3 +364,34 @@ async def writer_loop() -> None:
         except Exception:
             logger.exception("Writing AI traces failed; %s records lost", len(batch),
                              extra={"event": "ai_trace_write_failed"})
+
+
+def classify_error(e: BaseException) -> str:
+    """What kind of failure a model call hit, for telling users why the AI isn't working: KEY, QUOTA, MODEL, BUSY, OTHER."""
+    code = getattr(e, "code", None)
+    msg = str(e).lower()
+    if code in (401, 403) or any(k in msg for k in ("api key", "api_key", "permission_denied", "unauthenticated", "key expired")):
+        return "KEY"
+    if code == 429 or any(k in msg for k in ("resource_exhausted", "quota", "too many requests")):
+        return "QUOTA"
+    if code == 404 or any(k in msg for k in ("no longer available", "not found", "is not supported", "invalid model")):
+        return "MODEL"
+    if code in (500, 503, 504) or any(k in msg for k in ("unavailable", "high demand", "deadline", "timeout", "timed out")) or "timeout" in type(e).__name__.lower():
+        return "BUSY"
+    return "OTHER"
+
+
+attempt_listener: contextvars.ContextVar[Optional[Callable[[Dict[str, Any]], None]]] = contextvars.ContextVar(
+    "ai_attempt_listener", default=None
+)
+
+
+def _notify_attempt(event: Dict[str, Any]) -> None:
+    listener = attempt_listener.get()
+    if listener is None:
+        return
+    try:
+        listener(event)
+    except Exception:
+        pass
+
