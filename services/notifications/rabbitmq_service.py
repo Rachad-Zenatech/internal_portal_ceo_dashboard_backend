@@ -244,20 +244,14 @@ class InMemoryMessageBroker:
         return self._queues[queue_name]
 
     async def publish(self, exchange: str, routing_key: str, message: bytes):
-        # Match routing key to queue
-        target_queues = []
-        if "administration" in routing_key or "admin" in routing_key:
-            if "event" in exchange or "event" in routing_key:
-                target_queues.append("ceo.administration.events")
-            else:
-                target_queues.append("administration.commands")
+        if ".audit." in routing_key or routing_key.startswith("audit."):
+            target_queues = ["ceo.audit.events"]
+        elif "administration" in routing_key or "admin" in routing_key:
+            target_queues = ["ceo.administration.events" if ("event" in exchange or "event" in routing_key) else "administration.commands"]
         elif "ma" in routing_key:
-            if "event" in exchange or "event" in routing_key:
-                target_queues.append("ceo.ma.events")
-            else:
-                target_queues.append("ma.commands")
+            target_queues = ["ceo.ma.events" if ("event" in exchange or "event" in routing_key) else "ma.commands"]
         else:
-            target_queues.append(routing_key)
+            target_queues = [routing_key]
 
         for q_name in target_queues:
             q = self.get_queue(q_name)
@@ -464,11 +458,13 @@ class RabbitMQManager:
             )
             await cmd_queue.bind(self._commands_exchange, routing_key=f"{svc}.#")
 
-        # 6. CEO Result/Event Queues (the CEO's own "ceo.ceo.events" is declared but left unbound so it never fills up)
+        # 6. CEO Result/Event Queues + Unified Audit Queue (#.audit.#)
         for svc in _TOPOLOGY_SERVICES:
             evt_queue = await self._channel.declare_queue(f"ceo.{svc}.events", durable=True)
             if svc != "ceo":
                 await evt_queue.bind(self._events_exchange, routing_key=f"{svc}.#")
+        audit_queue = await self._channel.declare_queue("ceo.audit.events", durable=True)
+        await audit_queue.bind(self._events_exchange, routing_key="#.audit.#")
 
     async def _setup_hub_streams(self):
         """Declares RabbitMQ Streams. Failures are tolerated: the hub then reports streams as not working."""

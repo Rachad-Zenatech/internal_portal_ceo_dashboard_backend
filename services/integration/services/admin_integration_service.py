@@ -422,9 +422,9 @@ def _parse_purchase_request_item(r: Dict[str, Any]) -> Dict[str, Any]:
         "requires_second_level": bool(r.get("requires_second_level", False)),
         "current_approval_level": r.get("current_approval_level"),
     }
+    from services.shared.audit_sync_service import apply_urgent_override_fields
     _enrich_purchase_request_multi_currency(parsed)
-    return parsed
-
+    return apply_urgent_override_fields(parsed, r, parsed.get("quote_data"))
 
 async def check_portals_health() -> List[Dict[str, Any]]:
     from services.integration.services.service_status_registry import service_status_registry
@@ -627,7 +627,7 @@ async def _get_projected_purchase_requests(status_filter: str = "all") -> List[D
                     if mapped_st == "WAITING_APPROVAL":
                         items.append(d)
                 elif status_filter == "completed":
-                    if mapped_st in ["APPROVED", "COMPLETED", "REJECTED"]:
+                    if mapped_st in ["APPROVED", "COMPLETED", "REJECTED"] or d.get("is_urgent_override") or (isinstance(d.get("quote_data"), dict) and d["quote_data"].get("is_urgent_override")):
                         items.append(d)
                 else:
                     items.append(d)
@@ -706,7 +706,7 @@ async def get_completed_purchase_requests(user_id: Optional[UUID] = None) -> Lis
                 completed = []
                 for r in raw_list:
                     parsed = _parse_purchase_request_item(r)
-                    if parsed["status"] in ["APPROVED", "COMPLETED", "REJECTED"]:
+                    if parsed["status"] in ["APPROVED", "COMPLETED", "REJECTED"] or parsed.get("is_urgent_override"):
                         completed.append(parsed)
                 return completed
         except Exception as exc:

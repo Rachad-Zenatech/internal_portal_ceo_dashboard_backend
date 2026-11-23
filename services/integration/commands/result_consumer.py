@@ -41,21 +41,28 @@ class ResultConsumer:
             "ceo.ma.events",
             self.handle_incoming_message,
         )
-        logger.info("Result & Event Consumer subscribed to administration and M&A event queues.")
+        await rabbitmq_manager.consume_queue(
+            "ceo.audit.events",
+            self.handle_incoming_message,
+        )
+        logger.info("Result & Event Consumer subscribed to administration, M&A, and cross-project audit queues.")
 
     async def stop(self):
         self._running = False
         logger.info("Result & Event Consumer stopped.")
 
-    async def handle_incoming_message(self, message: Dict[str, Any]) -> None:
-        """Processes an incoming result or projection event message with inbox deduplication."""
+    async def _handle_direct_event(self, message: Dict[str, Any]) -> bool:
+        """Handle audit logs, cross-app CEO events, and direct business events outside the command inbox."""
         msg_type = message.get("message_type")
-
-        # Cross-application events published by Administration / M&A (publish_ceo_event) over the hub: same
-        # ingestion as the HTTP endpoint (store, sync, notifications, WebSocket + SSE broadcast).
+        if msg_type == "audit_log" or message.get("event_type") == "AUDIT_LOG_CREATED":
+            from services.shared.audit_sync_service import ingest_synced_audit_log
+            try:
+                await ingest_synced_audit_log(message)
+            except Exception as exc:
+                logger.warning(f"Failed ingesting synced audit log: {exc}")
+            return True
         if not msg_type and message.get("event_type"):
             from tools.integration.ceo_integration_router import CeoEventPayload, publish_event
-
             try:
                 await publish_event(CeoEventPayload(
                     event_type=str(message["event_type"]),
@@ -65,13 +72,9 @@ class ResultConsumer:
                 ))
             except Exception as exc:
                 logger.warning(f"Failed ingesting hub event {message.get('event_type')}: {exc}")
-            return
-
-        # Business events (e.g. PURCHASE_REQUEST_STATUS_CHANGED) are not command results: forward them to the
-        # browser WebSocket so tables refresh in real time. No inbox record, since repeats are legitimate.
+            return True
         if not msg_type and message.get("eventType"):
             from services.integration.services.service_status_registry import normalize_service_name, service_status_registry
-
             service_status_registry.publish_business_event({
                 "eventType": message["eventType"],
                 "service": normalize_service_name(message.get("service") or "administration"),
@@ -79,7 +82,14 @@ class ResultConsumer:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "data": message.get("data") or {},
             })
+            return True
+        return False
+
+    async def handle_incoming_message(self, message: Dict[str, Any]) -> None:
+        """Processes an incoming result or projection event message with inbox deduplication."""
+        if await self._handle_direct_event(message):
             return
+        msg_type = message.get("message_type")
 
         cmd_id = message.get("command_id")
         msg_id = message.get("correlation_id") or cmd_id or str(message.get("resource_id", "unknown"))

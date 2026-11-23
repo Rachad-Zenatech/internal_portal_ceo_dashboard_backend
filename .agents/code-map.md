@@ -28,7 +28,7 @@ to find the right file.
 | .agents/code-map/services__microsoft_graph.md | 1 | 1 KB |
 | .agents/code-map/services__notifications.md | 4 | 6 KB |
 | .agents/code-map/services__reports.md | 1 | 1 KB |
-| .agents/code-map/services__shared.md | 5 | 4 KB |
+| .agents/code-map/services__shared.md | 6 | 5 KB |
 | .agents/code-map/services__uploads.md | 3 | 2 KB |
 | .agents/code-map/tools__customization.md | 1 | 1 KB |
 | .agents/code-map/tools__dashboard.md | 1 | 1 KB |

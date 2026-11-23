@@ -41,7 +41,7 @@ Each symbol shows its start line (`L<n>`); read from there to the next symbol's 
 - `sync_approval_notifications` (def) L94 - Ensures unread notifications exist for all pending purchase requests that require approval.
 - `sync_ma_loi_accepted_notifications` (def) L154 - Ensures unread executive notifications exist for all deals where an LOI was accepted.
 
-## services/notifications/rabbitmq_service.py (1162 lines) - RabbitMQ Service & Topology Manager Provides resilient connection management, topology declaration, publisher confirmations, and dead-let...
+## services/notifications/rabbitmq_service.py (1158 lines) - RabbitMQ Service & Topology Manager Provides resilient connection management, topology declaration, publisher confirmations, and dead-let...
 - `_sanitize_amqp_url` (def) L46 - Mask password from AMQP URLs to prevent logging credentials.
 - `_explicit_url_parts` (def) L53 - Parsed RABBITMQ_URL, or None if unset / pointing at host.docker.internal (ignored, as before).
 - `get_rabbitmq_host` (def) L64
@@ -64,32 +64,32 @@ Each symbol shows its start line (`L<n>`); read from there to the next symbol's 
     - `__init__` (def) L237
     - `get_queue` (def) L241
     - `publish` (def) L246
-    - `clear` (def) L266
-- `RabbitMQManager` (class) L274
-    - `__init__` (def) L275
-    - `amqp_url` (def) L314
-    - `amqp_url` (def) L318
-    - `is_connected` (def) L322
-    - `connect` (def) L325 - Attempts to connect to RabbitMQ broker and initialize topology.
-    - `_setup_topology` (def) L415 - Declares durable exchanges, queues, DLX, and bindings.
-    - `_setup_hub_streams` (def) L473 - Declares RabbitMQ Streams.
-    - `_forward_presence_to_status_registry` (def) L495 - Feeds a service's own presence report into the Integration Matrix registry (replaces MQTT presence).
-    - `_expire_stale_presence` (def) L513 - A service whose hub heartbeat (every 5s) stops is marked offline, replacing MQTT's last-will message.
-    - `_handle_incoming_presence_payload` (def) L526
-    - `_start_hub_consumers` (def) L549 - Consumers for this server's command queue, the presence stream, and an instant status-notify queue.
-    - `subscribe_sse` (def) L601
-    - `unsubscribe_sse` (def) L606
-    - `_broadcast_to_sse` (def) L609
-    - `notify_shutting_down` (def) L621 - Wakes all SSE streams so Uvicorn exits without hanging, and announces offline to peers.
-    - `install_uvicorn_shutdown_hook` (def) L632 - Hook Uvicorn's Server.handle_exit so SIGINT/SIGTERM closes SSE streams and broadcasts offline.
-    - `broadcast_server_status_update` (def) L650 - Publishes a server online/offline message on the presence exchange so every peer updates its registry.
-    - `_publish_presence_event` (def) L689
-    - `_presence_heartbeat_loop` (def) L692 - Announces this server's live status every 5 seconds.
-    - `_peer_status_monitor_loop` (def) L705 - Every 2.5s re-evaluates all hub servers; pushes SSE updates and announces peers that dropped/returned.
-    - `_run_active_queue_and_stream_probe` (def) L738 - Round-trips a message through a temporary queue and publishes a healthcheck event to the events exchange.
-    - `get_hub_live_status` (def) L797 - Live Message Hub snapshot, cached for HUB_STATUS_CACHE_TTL seconds with single-flight refresh.
-    - `_build_hub_live_status` (def) L822 - Uncached Message Hub snapshot (same shape as the other portal backends) for the topbar servers dropdown.
-    - `publish_message` (def) L1047 - Publishes a persistent message with publisher confirmations.
-    - `consume_queue` (def) L1081 - Subscribes to a queue and processes messages with manual acknowledgments.
-    - `_consume_in_memory` (def) L1112
-    - `close` (def) L1126
+    - `clear` (def) L260
+- `RabbitMQManager` (class) L268
+    - `__init__` (def) L269
+    - `amqp_url` (def) L308
+    - `amqp_url` (def) L312
+    - `is_connected` (def) L316
+    - `connect` (def) L319 - Attempts to connect to RabbitMQ broker and initialize topology.
+    - `_setup_topology` (def) L409 - Declares durable exchanges, queues, DLX, and bindings.
+    - `_setup_hub_streams` (def) L469 - Declares RabbitMQ Streams.
+    - `_forward_presence_to_status_registry` (def) L491 - Feeds a service's own presence report into the Integration Matrix registry (replaces MQTT presence).
+    - `_expire_stale_presence` (def) L509 - A service whose hub heartbeat (every 5s) stops is marked offline, replacing MQTT's last-will message.
+    - `_handle_incoming_presence_payload` (def) L522
+    - `_start_hub_consumers` (def) L545 - Consumers for this server's command queue, the presence stream, and an instant status-notify queue.
+    - `subscribe_sse` (def) L597
+    - `unsubscribe_sse` (def) L602
+    - `_broadcast_to_sse` (def) L605
+    - `notify_shutting_down` (def) L617 - Wakes all SSE streams so Uvicorn exits without hanging, and announces offline to peers.
+    - `install_uvicorn_shutdown_hook` (def) L628 - Hook Uvicorn's Server.handle_exit so SIGINT/SIGTERM closes SSE streams and broadcasts offline.
+    - `broadcast_server_status_update` (def) L646 - Publishes a server online/offline message on the presence exchange so every peer updates its registry.
+    - `_publish_presence_event` (def) L685
+    - `_presence_heartbeat_loop` (def) L688 - Announces this server's live status every 5 seconds.
+    - `_peer_status_monitor_loop` (def) L701 - Every 2.5s re-evaluates all hub servers; pushes SSE updates and announces peers that dropped/returned.
+    - `_run_active_queue_and_stream_probe` (def) L734 - Round-trips a message through a temporary queue and publishes a healthcheck event to the events exchange.
+    - `get_hub_live_status` (def) L793 - Live Message Hub snapshot, cached for HUB_STATUS_CACHE_TTL seconds with single-flight refresh.
+    - `_build_hub_live_status` (def) L818 - Uncached Message Hub snapshot (same shape as the other portal backends) for the topbar servers dropdown.
+    - `publish_message` (def) L1043 - Publishes a persistent message with publisher confirmations.
+    - `consume_queue` (def) L1077 - Subscribes to a queue and processes messages with manual acknowledgments.
+    - `_consume_in_memory` (def) L1108
+    - `close` (def) L1122
