@@ -27,3 +27,13 @@ uploads
 outputs
 
 *.log
+.data
+# Agent/AI tooling: GitHub only, never in the image
+.agents
+.cursor
+.claude
+.cursorrules
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+.antigravityignore

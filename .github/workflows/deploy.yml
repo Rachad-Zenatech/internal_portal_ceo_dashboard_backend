@@ -458,6 +458,9 @@ jobs:
               git fetch origin main && \
               git reset --hard origin/main
             fi
+            cd ~/internal_portal_ceo_dashboard_backend
+            # Agent/AI tooling lives in GitHub only: never keep it on the server.
+            rm -rf .agents .cursor .claude .cursorrules AGENTS.md CLAUDE.md GEMINI.md .antigravityignore
           "
 
           {
