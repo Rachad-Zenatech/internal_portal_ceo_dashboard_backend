@@ -19,7 +19,7 @@ import httpx
 
 from postgresql_db.database import get_pool
 from services.shared.cache_service import emit_cache_invalidation
-
+from services.shared.secret_config import require_secret
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
@@ -28,7 +28,7 @@ FINANCE_API_BASE = os.getenv("FINANCE_PORTAL_API_URL", os.getenv("FINANCE_API_BA
 TIMEOUT_SECONDS = float(os.getenv("FINANCE_INTEGRATION_TIMEOUT_SECONDS", "2.0"))
 CONNECT_TIMEOUT = 0.8
 
-JWT_SECRET = os.environ.get("SESSION_SECRET") or os.environ.get("JWT_SECRET") or "OU2YW8HGoJJMb7+aAVjoxRXah2gSUtvPLPlzK8G6j9c="
+JWT_SECRET = require_secret("SESSION_SECRET", "JWT_SECRET")
 JWT_ALGORITHM = "HS256"
 JWT_ISSUER = "zenatech-internal-portal"
 

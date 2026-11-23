@@ -79,6 +79,9 @@ Each symbol shows its start line (`L<n>`); read from there to the next symbol's 
 - `get_role_permission_groups` (def) L517
 - `update_role_permission_groups` (def) L522
 
+## services/shared/secret_config.py (18 lines) - Validated secret lookup from environment variables with no hardcoded fallbacks.
+- `require_secret` (def) L6 - Return the first configured secret meeting min_length, or raise RuntimeError.
+
 ## services/shared/service_security_policy.py (201 lines) - Enterprise Application Security & Scope Authorization Policy Defines the strict Application-to-Application Access Matrix (Machine-to-Mach...
 - `require_application_scope` (def) L75 - FastAPI dependency that enforces Application-Level Scope authorization.
     - `_scope_guard` (def) L80

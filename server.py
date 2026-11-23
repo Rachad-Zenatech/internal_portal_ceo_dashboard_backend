@@ -33,6 +33,8 @@ from services.shared.logging_service import (
 configure_logging()
 logger = logging.getLogger(__name__)
 
+from services.shared.secret_config import require_secret
+
 # FastAPI routers (HTTP request routes)
 from tools.shared.search import router as search_router
 from tools.shared.rbac_router import router as rbac_router
@@ -301,15 +303,13 @@ app.include_router(graph_router, prefix="/api/v1/ceo", tags=["Microsoft Graph"],
 app.include_router(service_status_router, tags=["Service Availability"])
 app.include_router(finance_integration_router, prefix="/api", tags=["Finance Integration"], dependencies=authenticated)
 app.include_router(finance_integration_router, prefix="/api/v1/ceo", tags=["Finance Integration"], dependencies=authenticated)
-
 app.add_middleware(
     SessionMiddleware,
-    secret_key=os.environ["SESSION_SECRET"],
+    secret_key=require_secret("SESSION_SECRET"),
     same_site="lax",
     https_only=os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true",
     max_age=3600,
 )
-
 
 @app.get("/api/message-hub/status", dependencies=authenticated)
 async def message_hub_status(test: bool = False):
@@ -578,13 +578,13 @@ async def request_observability(request: Request, call_next):
     return response
 
 
-# Broad CORS for multi-app integration on local development and production
+_is_prod = os.getenv("APP_ENV", "development").strip().lower() == "production"
 _cors_env = os.getenv("CORS_ORIGINS", "") or os.getenv("CORS_ALLOWED_ORIGINS", "")
 cors_origins = [orig.strip() for orig in _cors_env.split(",") if orig.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.\d+\.\d+\.\d+)(:\d+)?$",
+    allow_origin_regex=None if _is_prod else r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.\d+\.\d+\.\d+)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],

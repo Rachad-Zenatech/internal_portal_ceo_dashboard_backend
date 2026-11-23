@@ -8,13 +8,13 @@ Each symbol shows its start line (`L<n>`); read from there to the next symbol's 
 - `start_broker` (def) L31
 
 ## server.py (601 lines) - server.py - CEO Executive Dashboard Backend Server
-- `lifespan` (def) L60
-- `MessageItem` (class) L177
-- `ChatRequest` (class) L181
-- `ai_chat` (def) L207 [POST /ai/chat]
-- `root` (def) L257 [GET /]
-- `health_live` (def) L262 [GET /health/live]
-- `health_ready` (def) L267 [GET /health/ready]
+- `lifespan` (def) L62
+- `MessageItem` (class) L179
+- `ChatRequest` (class) L183
+- `ai_chat` (def) L209 [POST /ai/chat]
+- `root` (def) L259 [GET /]
+- `health_live` (def) L264 [GET /health/live]
+- `health_ready` (def) L269 [GET /health/ready]
 - `message_hub_status` (def) L314 [GET /api/message-hub/status] - Live RabbitMQ Message Hub snapshot for the topbar servers dropdown (same contract as the other portals).
 - `message_hub_test` (def) L322 [POST /api/message-hub/test]
 - `message_hub_stream` (def) L329 [GET /api/message-hub/stream] - SSE: an initial snapshot, then a new snapshot whenever any server's status changes.
