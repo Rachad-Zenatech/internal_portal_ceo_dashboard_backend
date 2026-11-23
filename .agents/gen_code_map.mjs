@@ -7,17 +7,29 @@
 //
 // Regenerate after changing code:   node .agents/gen_code_map.mjs
 import { execSync } from "node:child_process";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT_MAP = join(ROOT, ".agents", "code-map.md");
 const OUT_MAP_DIR = join(ROOT, ".agents", "code-map");
+
+// A file is only rewritten when its content changed (line endings aside), and keeps the line endings it already has, so
+// regenerating after a small change touches only the maps that changed instead of every one of them.
+const writeStable = (path, text) => {
+  let eol = "\n";
+  if (existsSync(path)) {
+    const old = readFileSync(path, "utf8");
+    if (old.replace(/\r\n/g, "\n") === text) return;
+    if (old.includes("\r\n")) eol = "\r\n";
+  }
+  writeFileSync(path, eol === "\n" ? text : text.replace(/\n/g, "\r\n"));
+};
 const OUT_INDEX = join(ROOT, ".agents", "project-index.md");
 const FILES_CMD = "git ls-files";
 const SOURCE = /\.(py|ts|tsx|js|jsx|mjs)$/;
-const SKIP = /(^|\/)(node_modules|dist|build|coverage|migrations|alembic|__pycache__|\.agents|public)\//;
+const SKIP = /(^|\/)(node_modules|dist|build|coverage|migrations|alembic|tests|__pycache__|\.agents|public)\//;
 const SKIP_FILE = /(\.d\.ts|\.min\.js|vite-env\.d\.ts|\.test\.|\.spec\.|setupTests)/;
 // Files above this size also list their nested handlers/helpers, because those are what agents hunt for.
 const NESTED_THRESHOLD = 400;
@@ -182,7 +194,7 @@ for (const item of fileData) {
   indexParts.push(`- ${item.f} (${item.lineCount} lines)${desc}`);
 }
 indexParts.push("");
-writeFileSync(OUT_INDEX, indexParts.join("\n"));
+writeStable(OUT_INDEX, indexParts.join("\n"));
 console.log(`Wrote ${OUT_INDEX} (${fileData.length} files)`);
 
 // 2. Output .agents/code-map/<folder>.md: one small symbol map per source folder, with each symbol's start line
@@ -223,12 +235,13 @@ function mapText(title, items) {
   return parts.join("\n");
 }
 
-rmSync(OUT_MAP_DIR, { recursive: true, force: true }); // folders that no longer exist leave no stale map behind
 mkdirSync(OUT_MAP_DIR, { recursive: true });
+const expected = new Set();
 const written = [];
 const writeMap = (key, title, items) => {
   const text = mapText(title, items);
-  writeFileSync(join(OUT_MAP_DIR, `${key}.md`), text);
+  expected.add(`${key}.md`);
+  writeStable(join(OUT_MAP_DIR, `${key}.md`), text);
   written.push({ key, files: items.length, kb: Math.max(1, Math.round(Buffer.byteLength(text) / 1024)) });
 };
 for (const [key, items] of [...byFolder.entries()].sort(([a], [b]) => a.localeCompare(b))) {
@@ -260,5 +273,7 @@ const mapParts = [
   ...written.map((w) => `| .agents/code-map/${w.key}.md | ${w.files} | ${w.kb} KB |`),
   "",
 ];
-writeFileSync(OUT_MAP, mapParts.join("\n"));
+// Maps of folders that no longer exist go.
+for (const name of readdirSync(OUT_MAP_DIR)) if (!expected.has(name)) rmSync(join(OUT_MAP_DIR, name), { force: true });
+writeStable(OUT_MAP, mapParts.join("\n"));
 console.log(`Wrote ${OUT_MAP}`);

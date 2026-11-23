@@ -4,11 +4,16 @@
 //   - a Python function stays short (steps become their own functions or modules)
 //   - no source file grows past the file limit (the backstop for everything piling into one file)
 // What is already over a limit is listed in .agents/file_size_baseline.json and may only shrink.
+// Use --report-debt to plan the next split.  --staged / --changed-from <git-ref>
+// additionally require every touched debt item to shrink in that change.
 //
 //   node .agents/check_file_sizes.mjs            check (fails on anything new over a limit, or a baselined item that grew)
 //   node .agents/check_file_sizes.mjs --update   lower baselined ceilings to today's sizes and drop items back under the
 //                                                limit (never raises a ceiling: split the code instead)
 //   node .agents/check_file_sizes.mjs --init     baseline everything over a limit now (first setup only)
+//   node .agents/check_file_sizes.mjs --report-debt
+//   node .agents/check_file_sizes.mjs --staged
+//   node .agents/check_file_sizes.mjs --changed-from <git-ref>
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -25,12 +30,25 @@ const LIMIT = baseline.limit || 500;
 const BLOCK_LIMITS = { jsx_return: 80, py_function: 120, ...(baseline.block_limits || {}) };
 const files = baseline.files || {};
 const blocks = baseline.blocks || {};
-const mode = process.argv.includes("--init") ? "init" : process.argv.includes("--update") ? "update" : "check";
+const args = process.argv.slice(2);
+const mode = args.includes("--init") ? "init" : args.includes("--update") ? "update" : args.includes("--report-debt") ? "report" : "check";
+const changedFromIndex = args.indexOf("--changed-from");
+const changedFrom = changedFromIndex >= 0 ? args[changedFromIndex + 1] : null;
+const requireTouchedDebtToShrink = args.includes("--staged") || Boolean(changedFrom);
 const HOW = {
   file: "split it by functionality into smaller modules",
   jsx_return: "move each section of the JSX into its own component (and logic into a hook)",
   py_function: "split it into smaller functions, or move a step into its own module",
 };
+
+const changedFiles = () => {
+  if (!requireTouchedDebtToShrink) return new Set();
+  const command = args.includes("--staged")
+    ? "git diff --cached --name-only --diff-filter=ACMR"
+    : `git diff --name-only --diff-filter=ACMR ${changedFrom}...HEAD`;
+  return new Set(execSync(command, { cwd: ROOT, encoding: "utf8" }).split("\n").filter(Boolean));
+};
+const changed = changedFiles();
 
 const sources = execSync("git ls-files --cached --others --exclude-standard", { cwd: ROOT, encoding: "utf8" })
   .split("\n")
@@ -119,9 +137,11 @@ if (mode === "init") {
 const errors = [];
 const stale = { files: [], blocks: [] };
 const judge = (key, n, limit, entry, what, how, store, staleList) => {
+  const file = key.split("#", 1)[0];
   if (n <= limit) { if (entry) staleList.push(key); return; }
   if (!entry) errors.push(`${key}: ${what} is ${n} lines, over the ${limit}-line limit: ${how}.`);
-  else if (n > entry.max_lines) errors.push(`${key}: ${what} grew to ${n} lines, past its ceiling of ${entry.max_lines}: ${how}.`);
+  else if (n > entry.max_lines && (!requireTouchedDebtToShrink || changed.has(file)))
+    errors.push(`${key}: ${what} grew to ${n} lines, past its ceiling of ${entry.max_lines}: ${how}.`);
   else if (mode === "update" && n < entry.max_lines) store[key].max_lines = n;
 };
 for (const [f, n] of Object.entries(fileSizes)) judge(f, n, LIMIT, files[f], "the file", HOW.file, files, stale.files);
@@ -129,6 +149,32 @@ for (const [k, { n, kind }] of Object.entries(blockSizes))
   judge(k, n, BLOCK_LIMITS[kind], blocks[k], kind === "jsx_return" ? "its JSX return" : "the function", HOW[kind], blocks, stale.blocks);
 for (const f of Object.keys(files)) if (!(f in fileSizes)) stale.files.push(f);
 for (const k of Object.keys(blocks)) if (!(k in blockSizes)) stale.blocks.push(k);
+
+if (requireTouchedDebtToShrink) {
+  for (const [file, entry] of Object.entries(files)) {
+    if (changed.has(file) && fileSizes[file] >= entry.max_lines)
+      errors.push(`${file}: this refactoring-debt file was changed without shrinking below ${entry.max_lines} lines. Extract one responsibility before committing.`);
+  }
+  for (const [key, entry] of Object.entries(blocks)) {
+    const file = key.split("#", 1)[0];
+    if (changed.has(file) && blockSizes[key]?.n >= entry.max_lines)
+      errors.push(`${key}: this refactoring-debt block was changed without shrinking below ${entry.max_lines} lines. Extract a helper or module before committing.`);
+  }
+}
+
+if (mode === "report") {
+  const debt = [
+    ...Object.entries(files)
+      .filter(([key]) => (fileSizes[key] || 0) > LIMIT)
+      .map(([key, entry]) => ({ key, current: fileSizes[key] || 0, max: LIMIT, kind: "file" })),
+    ...Object.entries(blocks)
+      .filter(([key, entry]) => (blockSizes[key]?.n || 0) > BLOCK_LIMITS[entry.kind || "py_function"])
+      .map(([key, entry]) => ({ key, current: blockSizes[key]?.n || 0, max: BLOCK_LIMITS[entry.kind || "py_function"], kind: entry.kind || "block" })),
+  ].sort((a, b) => (b.current - b.max) - (a.current - a.max));
+  console.log("Refactoring debt queue (largest excess first):");
+  debt.forEach(({ key, current, max, kind }, index) => console.log(`${index + 1}. ${key} — ${current}/${max} lines (${kind}); split by responsibility and run --update after it is below the limit.`));
+  process.exit(0);
+}
 
 if (mode === "update") {
   stale.files.forEach((f) => delete files[f]);
