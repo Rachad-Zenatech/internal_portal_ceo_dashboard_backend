@@ -54,6 +54,15 @@ jobs:
         run: |
           ruff check . --select E9,F63,F7,F82
 
+      - name: Verify App Startup Imports
+        env:
+          APP_ENV: development
+          SESSION_SECRET: ci-dummy-session-secret-for-import-check-32chars
+          JWT_SECRET: ci-dummy-jwt-secret-for-import-check-32chars
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ci_check
+        run: |
+          python -c "import server"
+
       # Style issues are reported but don't block yet (there's a backlog of them to clear first).
       - name: Ruff (style report)
         run: |
