@@ -2,7 +2,7 @@ import logging
 from typing import Literal, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Request, status, Query
 from pydantic import BaseModel, Field
 
 from services.shared.auth_service import get_current_user_id_dependency
@@ -66,3 +66,24 @@ async def report_client_performance(
         },
     )
     return {"accepted": True}
+
+
+@router.get("/observability/ai/overview")
+async def get_ai_overview_endpoint(
+    hours: int = Query(default=24, ge=1, le=720),
+    user_id: UUID = Depends(get_current_user_id_dependency),
+):
+    from services.ai.ai_overview_service import get_ai_overview
+    return await get_ai_overview(hours=hours, user_id=user_id)
+
+
+@router.get("/observability/ai/errors")
+async def get_ai_errors_endpoint(
+    hours: int = Query(default=24, ge=1, le=720),
+    feature: Optional[str] = Query(default=None),
+    model: Optional[str] = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+    _user_id: UUID = Depends(get_current_user_id_dependency),
+):
+    from services.ai.ai_observability import list_ai_errors
+    return await list_ai_errors(hours=hours, feature=feature, model=model, limit=limit)

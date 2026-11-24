@@ -395,3 +395,29 @@ def _notify_attempt(event: Dict[str, Any]) -> None:
     except Exception:
         pass
 
+
+async def list_ai_errors(
+    hours: int = 24,
+    feature: Optional[str] = None,
+    model: Optional[str] = None,
+    limit: int = 100,
+) -> Dict[str, Any]:
+    """Recent AI errors and blocked calls within `hours`, optionally filtered by feature and/or model."""
+    rows = await fetch_all(
+        """
+        SELECT p.id, p.trace_id, p.feature, p.model, p.status, p.error_type,
+               p.response AS message, p.guard_verdict, p.latency_ms, p.created_at,
+               s.attributes->>'error_kind' AS error_kind,
+               s.attributes->>'route_tier' AS route_tier
+        FROM ai_prompt_logs p
+        LEFT JOIN ai_trace_spans s ON s.id = p.span_id
+        WHERE p.created_at > NOW() - make_interval(hours => $1)
+          AND p.status <> 'OK'
+          AND ($2::text IS NULL OR UPPER(p.feature) = UPPER($2))
+          AND ($3::text IS NULL OR p.model = $3)
+        ORDER BY p.created_at DESC
+        LIMIT $4
+        """,
+        hours, feature, model, limit,
+    )
+    return {"hours": hours, "feature": feature, "model": model, "items": [dict(r) for r in rows]}
