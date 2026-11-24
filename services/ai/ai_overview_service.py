@@ -16,7 +16,7 @@ _FEATURE_CATALOG: List[Dict[str, Any]] = [
             "bedrock_llm",
             "titan_embeddings"
         ],
-        "routed": true
+        "routed": True
     },
     {
         "feature": "EMBEDDINGS",
@@ -25,7 +25,7 @@ _FEATURE_CATALOG: List[Dict[str, Any]] = [
         "cores": [
             "titan_embeddings"
         ],
-        "routed": false
+        "routed": False
     }
 ]
 
@@ -159,29 +159,12 @@ async def _fetch_usage_aggregates(hours: int) -> Dict[str, Any]:
     }
 
 
-async def get_ai_overview(hours: int = 24, user_id: Optional[UUID] = None) -> Dict[str, Any]:
-    usage = await _fetch_usage_aggregates(hours)
-    ai_health = _get_ai_health()
-    health_dict = ai_health.get_status_dict() if ai_health else {"available": True, "reason": None, "feature_issues": []}
-
-    feature_issues = {}
-    for issue in health_dict.get("feature_issues", []):
-        for f in issue.get("affected_features") or []:
-            feature_issues[f] = issue
-
-    usage_service = _get_ai_usage_service()
-    quota_by_feature: Dict[str, Any] = {}
-    if usage_service and hasattr(usage_service, "get_user_usage_summary") and user_id is not None:
-        try:
-            q = await usage_service.get_user_usage_summary(user_id)
-            quota_by_feature = q.get("features") or {}
-        except Exception:
-            quota_by_feature = {}
-
-    model_rows = usage["models"]
-    step_rows = usage["steps"]
-    by_core = _features_by_core()
-
+def _build_overview_cores(
+    health_dict: Dict[str, Any],
+    model_rows: List[Dict[str, Any]],
+    step_rows: List[Dict[str, Any]],
+    by_core: Dict[str, List[str]],
+) -> List[Dict[str, Any]]:
     bedrock_svc = _get_bedrock_service()
     has_key = bool(getattr(bedrock_svc, "has_ai_key", lambda: False)()) if bedrock_svc else False
     bedrock_profile = (getattr(bedrock_svc, "get_bedrock_profile_id", lambda: None)() or "Not set") if bedrock_svc else "Not set"
@@ -232,7 +215,16 @@ async def get_ai_overview(hours: int = 24, user_id: Optional[UUID] = None) -> Di
             }
         )
 
-    core_status_map = {c["core"]: c["status"] for c in cores}
+    return cores
+
+
+def _build_overview_features(
+    model_rows: List[Dict[str, Any]],
+    feature_last: Dict[str, Any],
+    feature_issues: Dict[str, Any],
+    core_status_map: Dict[str, str],
+    quota_by_feature: Dict[str, Any],
+) -> List[Dict[str, Any]]:
     features: List[Dict[str, Any]] = []
     for entry in _FEATURE_CATALOG:
         fname = entry["feature"]
@@ -254,7 +246,7 @@ async def get_ai_overview(hours: int = 24, user_id: Optional[UUID] = None) -> Di
         elif status == "READY" and calls > 0:
             status = "OK"
 
-        last = usage["feature_last"].get(fname) or {}
+        last = feature_last.get(fname) or {}
         features.append(
             {
                 "feature": fname,
@@ -284,6 +276,33 @@ async def get_ai_overview(hours: int = 24, user_id: Optional[UUID] = None) -> Di
                 "usage_24h": quota_by_feature.get(fname),
             }
         )
+    return features
+
+
+async def get_ai_overview(hours: int = 24, user_id: Optional[UUID] = None) -> Dict[str, Any]:
+    usage = await _fetch_usage_aggregates(hours)
+    ai_health = _get_ai_health()
+    health_dict = ai_health.get_status_dict() if ai_health else {"available": True, "reason": None, "feature_issues": []}
+
+    feature_issues = {}
+    for issue in health_dict.get("feature_issues", []):
+        for f in issue.get("affected_features") or []:
+            feature_issues[f] = issue
+
+    usage_service = _get_ai_usage_service()
+    quota_by_feature: Dict[str, Any] = {}
+    if usage_service and hasattr(usage_service, "get_user_usage_summary") and user_id is not None:
+        try:
+            q = await usage_service.get_user_usage_summary(user_id)
+            quota_by_feature = q.get("features") or {}
+        except Exception:
+            quota_by_feature = {}
+
+    model_rows = usage["models"]
+    step_rows = usage["steps"]
+    cores = _build_overview_cores(health_dict, model_rows, step_rows, _features_by_core())
+    core_status_map = {c["core"]: c["status"] for c in cores}
+    features = _build_overview_features(model_rows, usage["feature_last"], feature_issues, core_status_map, quota_by_feature)
 
     total_calls = sum(f["calls"] for f in features)
     total_errors = sum(f["errors"] for f in features)

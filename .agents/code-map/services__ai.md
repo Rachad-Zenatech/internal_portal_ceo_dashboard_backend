@@ -49,7 +49,7 @@ Each symbol shows its start line (`L<n>`); read from there to the next symbol's 
 - `_notify_attempt` (def) L389
 - `list_ai_errors` (def) L399 - Recent AI errors and blocked calls within `hours`, optionally filtered by feature and/or model.
 
-## services/ai/ai_overview_service.py (322 lines) - Combined AI health, feature-to-core mapping, and usage overview for System & Security.
+## services/ai/ai_overview_service.py (341 lines) - Combined AI health, feature-to-core mapping, and usage overview for System & Security.
 - `_has_core` (def) L38
 - `_routing_tier` (def) L42
 - `_features_by_core` (def) L52
@@ -57,7 +57,9 @@ Each symbol shows its start line (`L<n>`); read from there to the next symbol's 
 - `_get_ai_health` (def) L69
 - `_get_ai_usage_service` (def) L77
 - `_fetch_usage_aggregates` (def) L85
-- `get_ai_overview` (def) L162
+- `_build_overview_cores` (def) L162
+- `_build_overview_features` (def) L221
+- `get_ai_overview` (def) L282
 
 ## services/ai/ai_usage_service.py (141 lines) - AI Usage Limits Caps how often Gemini runs, so one person (or a stuck loop) can't use up the provider quota or run up cost.
 - `_env_int` (def) L35
