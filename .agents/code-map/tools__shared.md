@@ -15,11 +15,13 @@ Each symbol shows its start line (`L<n>`); read from there to the next symbol's 
 - `heartbeat` (def) L185 [POST /auth/heartbeat]
 - `logout` (def) L209 [POST /auth/logout]
 
-## tools/shared/observability.py (69 lines) - observability (shared)
+## tools/shared/observability.py (90 lines) - observability (shared)
 - `ClientErrorReport` (class) L15
 - `ClientPerformanceReport` (class) L23
 - `report_client_error` (def) L30 [POST /observability/client-error]
 - `report_client_performance` (def) L52 [POST /observability/client-performance]
+- `get_ai_overview_endpoint` (def) L71 [GET /observability/ai/overview]
+- `get_ai_errors_endpoint` (def) L80 [GET /observability/ai/errors]
 
 ## tools/shared/rbac_router.py (53 lines) - rbac router (shared)
 - `get_current_user_id` (def) L16

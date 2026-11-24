@@ -12,6 +12,7 @@ import re
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
 import boto3
+from botocore.config import Config
 from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
@@ -372,17 +373,27 @@ class BedrockAioModels:
         profile_id = get_bedrock_profile_id()
 
         loop = asyncio.get_running_loop()
+        stream_timeout = float(os.getenv("BEDROCK_STREAM_TIMEOUT_SEC", "120"))
         try:
-            stream_resp = await loop.run_in_executor(None, lambda: boto.converse_stream(**params))
+            stream_resp = await asyncio.wait_for(
+                loop.run_in_executor(None, lambda: boto.converse_stream(**params)),
+                timeout=stream_timeout,
+            )
         except ClientError as exc:
             code = exc.response.get("Error", {}).get("Code", "")
             if profile_id and params["modelId"] != profile_id and code in _FALLBACK_CLIENT_ERRORS:
                 logger.info("Bedrock stream %s failed (%s); falling back to profile %s", params["modelId"], code, profile_id)
                 params["modelId"] = profile_id
-                stream_resp = await loop.run_in_executor(None, lambda: boto.converse_stream(**params))
+                stream_resp = await asyncio.wait_for(
+                    loop.run_in_executor(None, lambda: boto.converse_stream(**params)),
+                    timeout=stream_timeout,
+                )
             else:
                 raise
-        events = await loop.run_in_executor(None, lambda: list(stream_resp["stream"]))
+        events = await asyncio.wait_for(
+            loop.run_in_executor(None, lambda: list(stream_resp["stream"])),
+            timeout=stream_timeout,
+        )
         return BedrockStreamIterator(events)
 
 
@@ -405,7 +416,10 @@ class BedrockClientAdapter:
             if key:
                 os.environ["AWS_BEARER_TOKEN_BEDROCK"] = key
             region = get_bedrock_region()
-            kwargs: Dict[str, Any] = {}
+            read_timeout = max(5, int(os.getenv("BEDROCK_READ_TIMEOUT_SEC", "90")))
+            kwargs: Dict[str, Any] = {
+                "config": Config(connect_timeout=10, read_timeout=read_timeout, retries={"max_attempts": 1, "mode": "standard"}),
+            }
             if region:
                 kwargs["region_name"] = region
             self._boto_client = boto3.client("bedrock-runtime", **kwargs)

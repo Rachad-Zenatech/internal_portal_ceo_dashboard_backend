@@ -25,9 +25,10 @@ For function and route definitions with their line numbers, grep `.agents/code-m
 - run_mqtt_broker.py (48 lines) - Local MQTT Broker Runner (Zero External Dependencies) Runs a standalone MQTT broker on 127.0.0.1:1883 using amqtt.
 - server.py (601 lines) - server.py - CEO Executive Dashboard Backend Server
 - services/ai/ai_guardrails.py (249 lines) - AI guardrails: screening what goes into the model and redacting personal data from what comes out.
-- services/ai/ai_observability.py (398 lines) - AI observability: a trace span for every model call, embedding, retrieval, cache lookup, guard check and tool call, plus a prompt log of ...
+- services/ai/ai_observability.py (424 lines) - AI observability: a trace span for every model call, embedding, retrieval, cache lookup, guard check and tool call, plus a prompt log of ...
+- services/ai/ai_overview_service.py (322 lines) - Combined AI health, feature-to-core mapping, and usage overview for System & Security.
 - services/ai/ai_usage_service.py (141 lines) - AI Usage Limits Caps how often Gemini runs, so one person (or a stuck loop) can't use up the provider quota or run up cost.
-- services/ai/bedrock_service.py (434 lines) - AWS Bedrock AI Service Adapter.
+- services/ai/bedrock_service.py (448 lines) - AWS Bedrock AI Service Adapter.
 - services/customization/board_service.py (53 lines) - board service (customization)
 - services/dashboard/dashboard_service.py (323 lines) - dashboard service (dashboard)
 - services/integration/commands/admin_command_processor.py (341 lines) - Administration Command Processor Consumes and executes commands from the 'administration.commands' queue, invokes authoritative domain lo...
@@ -71,7 +72,7 @@ For function and route definitions with their line numbers, grep `.agents/code-m
 - tools/notifications/notification_router.py (85 lines) - Overwrite user_id to ensure a user can only create for themselves (or we can let it be, but for safety let's use the authenticated user)
 - tools/notifications/notification_ws_router.py (120 lines) - Notification WebSocket Router Provides: - WebSocket /ws/notifications: Real-time notification delivery.
 - tools/shared/auth_router.py (266 lines) - auth router (shared)
-- tools/shared/observability.py (69 lines) - observability (shared)
+- tools/shared/observability.py (90 lines) - observability (shared)
 - tools/shared/rbac_router.py (53 lines) - rbac router (shared)
 - tools/shared/search.py (28 lines) - Add any future global search logic here (e.g., searching users or roles)
 - tools/uploads/upload_files.py (87 lines) - upload files (uploads)
