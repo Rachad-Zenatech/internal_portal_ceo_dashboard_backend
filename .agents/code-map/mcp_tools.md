@@ -5,8 +5,8 @@
 Each symbol shows its start line (`L<n>`); read from there to the next symbol's line, not the whole file.
 
 ## mcp_tools/__init__.py (994 lines) - mcp_tools/__init__.py
-- `get_mongo_collection` (def) L53
-- `_get_gemini_client` (def) L91
+- `get_mongo_collection` (def) L51
+- `_get_gemini_client` (def) L90
 - `_normalize_ai_review_model_name` (def) L100
 - `_ai_review_model_candidates` (def) L103
 - `generate_with_fallback` (def) L135 - Call Gemini with retries and progressive model fallback.

@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_CHEAP_MODEL = "us.anthropic.claude-haiku-5-5"
 DEFAULT_HEAVY_MODEL = "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
 _FALLBACK_CLIENT_ERRORS = ("AccessDeniedException", "ValidationException", "ResourceNotFoundException", "ThrottlingException")
+_PERSISTENT_UNAVAILABLE_ERRORS = ("AccessDeniedException", "ValidationException", "ResourceNotFoundException")
+_UNAVAILABLE_MODEL_CACHE: set[str] = set()
 
 
 def is_expensive_model(name: Optional[str]) -> bool:
@@ -81,8 +83,8 @@ def get_bedrock_key() -> Optional[str]:
 
 
 def has_ai_key() -> bool:
-    """Return True if either AWS Bedrock or Google Gemini is configured."""
-    return is_bedrock_enabled() or bool(os.getenv("GEMINI_API_KEY", "").strip())
+    """Return True if AWS Bedrock is configured."""
+    return is_bedrock_enabled()
 
 
 def clean_json_fences(text: str) -> str:
@@ -119,13 +121,15 @@ class BedrockUsageMetadata:
 class BedrockResponse:
     """Emulates google.genai.types.GenerateContentResponse for downstream services."""
 
-    def __init__(self, text: str, usage: Optional[Dict[str, Any]] = None, parsed: Any = None):
+    def __init__(self, text: str, usage: Optional[Dict[str, Any]] = None, parsed: Any = None,
+                 stop_reason: Optional[str] = None):
         self._text = text
         self.candidates = [BedrockCandidate(text)]
         in_tok = (usage or {}).get("inputTokens", 0)
         out_tok = (usage or {}).get("outputTokens", 0)
         self.usage_metadata = BedrockUsageMetadata(in_tok, out_tok)
         self.parsed = parsed
+        self.stop_reason = stop_reason
 
     @property
     def text(self) -> str:
@@ -303,25 +307,45 @@ class BedrockModels:
         boto = self._adapter.get_boto_client()
         params = _build_converse_params(model, contents, config)
         profile_id = get_bedrock_profile_id()
+        if profile_id and params["modelId"] != profile_id and params["modelId"] in _UNAVAILABLE_MODEL_CACHE:
+            params["modelId"] = profile_id
         try:
             resp = boto.converse(**params)
         except ClientError as exc:
             code = exc.response.get("Error", {}).get("Code", "")
             if profile_id and params["modelId"] != profile_id and code in _FALLBACK_CLIENT_ERRORS:
+                if code in _PERSISTENT_UNAVAILABLE_ERRORS:
+                    _UNAVAILABLE_MODEL_CACHE.add(params["modelId"])
                 logger.info("Bedrock %s failed (%s); falling back to profile %s", params["modelId"], code, profile_id)
                 params["modelId"] = profile_id
                 resp = boto.converse(**params)
             else:
                 raise
 
-        raw_text = ""
-        output_msg = resp.get("output", {}).get("message", {})
-        for c in output_msg.get("content", []):
-            if "text" in c:
-                raw_text += c["text"]
-
         is_json = getattr(config, "response_mime_type", None) == "application/json"
-        clean_text = clean_json_fences(raw_text) if is_json or raw_text.strip().startswith("```") else raw_text
+        for attempt in range(2):
+            output_msg = resp.get("output", {}).get("message", {})
+            raw_text = "".join(c.get("text", "") for c in output_msg.get("content", []))
+            clean_text = clean_json_fences(raw_text) if is_json or raw_text.strip().startswith("```") else raw_text
+            if not is_json:
+                break
+            try:
+                json.loads(clean_text)
+                malformed = False
+            except ValueError:
+                malformed = True
+            truncated = resp.get("stopReason") == "max_tokens"
+            if not malformed and not truncated:
+                break
+            if attempt == 1:
+                if truncated:
+                    raise ValueError("Bedrock JSON response exceeded its output token limit")
+                break
+            current_budget = params["inferenceConfig"]["maxTokens"]
+            params["inferenceConfig"]["maxTokens"] = max(current_budget, min(8192, max(4096, current_budget * 2)))
+            logger.warning("Retrying incomplete or malformed Bedrock JSON response (stop_reason=%s, max_tokens=%s)",
+                           resp.get("stopReason"), params["inferenceConfig"]["maxTokens"])
+            resp = boto.converse(**params)
         usage = resp.get("usage", {})
 
         parsed = None
@@ -334,7 +358,7 @@ class BedrockModels:
             except Exception:
                 pass
 
-        return BedrockResponse(clean_text, usage, parsed)
+        return BedrockResponse(clean_text, usage, parsed, resp.get("stopReason"))
 
 
 class BedrockStreamIterator:
@@ -437,11 +461,5 @@ def get_bedrock_client() -> BedrockClientAdapter:
 
 
 def get_ai_client() -> Any:
-    """Return Bedrock client if enabled; otherwise Gemini client if GEMINI_API_KEY is present."""
-    if is_bedrock_enabled():
-        return get_bedrock_client()
-    api_key = os.getenv("GEMINI_API_KEY", "").strip()
-    if api_key:
-        from google import genai
-        return genai.Client(api_key=api_key)
-    return None
+    """Return Bedrock client if enabled, else None."""
+    return get_bedrock_client() if is_bedrock_enabled() else None

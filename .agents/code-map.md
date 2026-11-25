@@ -19,7 +19,7 @@ to find the right file.
 | .agents/code-map/models__shared.md | 1 | 1 KB |
 | .agents/code-map/postgresql_db.md | 2 | 2 KB |
 | .agents/code-map/postgresql_db__schemas.md | 5 | 1 KB |
-| .agents/code-map/services__ai.md | 5 | 6 KB |
+| .agents/code-map/services__ai.md | 6 | 6 KB |
 | .agents/code-map/services__customization.md | 1 | 1 KB |
 | .agents/code-map/services__dashboard.md | 1 | 1 KB |
 | .agents/code-map/services__integration__commands.md | 5 | 3 KB |

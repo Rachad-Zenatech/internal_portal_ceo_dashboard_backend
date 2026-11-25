@@ -19,9 +19,7 @@ from typing import Any, Callable, Dict, List, Optional
 from uuid import UUID
 
 from dotenv import load_dotenv
-from google import genai
-from google.genai import types
-from google.genai import errors
+from services.ai import ai_types as types
 from fastmcp.prompts import Prompt
 
 
@@ -83,7 +81,8 @@ gemini_client = None
 _gemini_api_key = os.getenv("GEMINI_API_KEY")
 if _gemini_api_key:
     try:
-        gemini_client = genai.Client(api_key=_gemini_api_key)
+        from services.ai.bedrock_service import get_ai_client
+        gemini_client = get_ai_client()
     except Exception as e:
         logger.warning(f"Could not initialize Gemini Client: {e}")
 
@@ -93,7 +92,8 @@ def _get_gemini_client():
     if not api_key:
         return None
     try:
-        return genai.Client(api_key=api_key)
+        from services.ai.bedrock_service import get_ai_client
+        return get_ai_client()
     except Exception:
         return None
 
@@ -148,7 +148,7 @@ async def generate_with_fallback(contents, config):
                     config=config,
                 )
 
-            except errors.ServerError as e:
+            except Exception as e:
                 last_error = e
                 if getattr(e, 'code', None) == 503 or "503" in str(e):
                     break # Immediately fallback on 503 Overloaded
@@ -167,7 +167,7 @@ async def generate_with_fallback(contents, config):
                     break # Immediately fallback to the next model in the list
                 
                 # For transient server errors, retry
-                if isinstance(e, errors.APIError) or "500" in error_str:
+                if False or "500" in error_str:
                     await asyncio.sleep(1 + attempt)
                 else:
                     # For other unknown errors (like a general ClientError we didn't explicitly match), 
@@ -200,7 +200,7 @@ async def generate_stream_with_fallback(contents, config):
                     yield chunk
                 return
 
-            except errors.ServerError as e:
+            except Exception as e:
                 last_error = e
                 if getattr(e, 'code', None) == 503 or "503" in str(e):
                     break
@@ -215,7 +215,7 @@ async def generate_stream_with_fallback(contents, config):
                     "404" in error_str or "not found" in error_str or
                     "503" in error_str or "unavailable" in error_str):
                     break
-                if isinstance(e, errors.APIError) or "500" in error_str:
+                if False or "500" in error_str:
                     await asyncio.sleep(1 + attempt)
                 else:
                     break
