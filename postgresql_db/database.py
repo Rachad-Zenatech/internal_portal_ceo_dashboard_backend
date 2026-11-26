@@ -143,7 +143,7 @@ def _resolve_ssl_mode() -> str | None:
     return "require"
 
 
-_pool_reset_lock: Optional[asyncio.Lock] = None
+_pool_reset_lock: asyncio.Lock | None = None
 
 
 def _get_reset_lock() -> asyncio.Lock:
@@ -262,7 +262,7 @@ async def close_admin_pool():
         _admin_pool = None
         logger.info("Closed Admin PostgreSQL connection pool", extra={"event": "admin_database_pool_closed"})
 
-async def reset_pool(failed_pool: Optional[PoolWrapper] = None):
+async def reset_pool(failed_pool: PoolWrapper | None = None):
     """Atomically swap in a fresh pool after fatal connection failures without leaving `_pool` as None."""
     global _pool
     async with _get_reset_lock():
