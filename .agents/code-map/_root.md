@@ -7,7 +7,7 @@ Each symbol shows its start line (`L<n>`); read from there to the next symbol's 
 ## run_mqtt_broker.py (48 lines) - Local MQTT Broker Runner (Zero External Dependencies) Runs a standalone MQTT broker on 127.0.0.1:1883 using amqtt.
 - `start_broker` (def) L31
 
-## server.py (601 lines) - server.py - CEO Executive Dashboard Backend Server
+## server.py (600 lines) - server.py - CEO Executive Dashboard Backend Server
 - `lifespan` (def) L62
 - `MessageItem` (class) L179
 - `ChatRequest` (class) L183
@@ -21,6 +21,6 @@ Each symbol shows its start line (`L<n>`); read from there to the next symbol's 
     - `_event_generator` (def) L335
 - `api_ceo_integration_status` (def) L362 [GET /api/integration/status, GET /api/integration-status]
 - `security_headers` (def) L477
-- `_slow_request_threshold_ms` (def) L489
-- `_should_log_request_completion` (def) L500
-- `request_observability` (def) L511
+- `_slow_request_threshold_ms` (def) L487
+- `_should_log_request_completion` (def) L498
+- `request_observability` (def) L509

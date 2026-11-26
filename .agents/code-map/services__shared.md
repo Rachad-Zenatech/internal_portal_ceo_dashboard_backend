@@ -44,6 +44,12 @@ Each symbol shows its start line (`L<n>`); read from there to the next symbol's 
 - `remove_invalidation_listener` (def) L40 - Removes a registered invalidation listener.
 - `emit_cache_invalidation` (def) L48 - Broadcasts a cache invalidation event to local stores, registered listeners,
 
+## services/shared/cookie_origin_protection.py (39 lines) - Reject cross-origin state-changing requests carrying a browser session.
+- `CookieOriginProtection` (class) L9
+    - `__init__` (def) L10
+    - `trusted` (def) L16
+    - `dispatch` (def) L33
+
 ## services/shared/logging_service.py (179 lines) - Structured application logging suitable for container stdout and CloudWatch Logs.
 - `JsonFormatter` (class) L43 - Emit one compact JSON object per line for CloudWatch Logs Insights.
     - `format` (def) L46

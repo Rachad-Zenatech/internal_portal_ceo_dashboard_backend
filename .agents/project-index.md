@@ -23,7 +23,7 @@ For function and route definitions with their line numbers, grep `.agents/code-m
 - postgresql_db/schemas/user_dashboard_layouts_schema.py (36 lines) - user dashboard layouts schema (schemas)
 - postgresql_db/setup_rls_security.py (309 lines) - RDS PostgreSQL Role-Based Access Control & Row-Level Security (RLS) Setup for the CEO Dashboard backend.
 - run_mqtt_broker.py (48 lines) - Local MQTT Broker Runner (Zero External Dependencies) Runs a standalone MQTT broker on 127.0.0.1:1883 using amqtt.
-- server.py (601 lines) - server.py - CEO Executive Dashboard Backend Server
+- server.py (600 lines) - server.py - CEO Executive Dashboard Backend Server
 - services/ai/ai_guardrails.py (249 lines) - AI guardrails: screening what goes into the model and redacting personal data from what comes out.
 - services/ai/ai_observability.py (424 lines) - AI observability: a trace span for every model call, embedding, retrieval, cache lookup, guard check and tool call, plus a prompt log of ...
 - services/ai/ai_overview_service.py (382 lines) - Combined AI health, feature-to-core mapping, and usage overview for System & Security.
@@ -58,6 +58,7 @@ For function and route definitions with their line numbers, grep `.agents/code-m
 - services/shared/audit_sync_service.py (321 lines) - Cross-project audit log ingestion for CEO Dashboard over RabbitMQ Message Hub.
 - services/shared/auth_service.py (424 lines) - Create token
 - services/shared/cache_service.py (101 lines) - Cache Management and Invalidation Service Provides local in-memory caching utilities and asynchronous cache invalidation propagation acro...
+- services/shared/cookie_origin_protection.py (39 lines) - Reject cross-origin state-changing requests carrying a browser session.
 - services/shared/logging_service.py (179 lines) - Structured application logging suitable for container stdout and CloudWatch Logs.
 - services/shared/rbac_service.py (540 lines) - Utility for audit logging
 - services/shared/secret_config.py (18 lines) - Validated secret lookup from environment variables with no hardcoded fallbacks.

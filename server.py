@@ -481,8 +481,6 @@ async def security_headers(request: Request, call_next):
     response.headers.setdefault("Referrer-Policy", "no-referrer")
     response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
     return response
-
-
 _REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 
 
@@ -576,21 +574,22 @@ async def request_observability(request: Request, call_next):
         )
     request_id_ctx.reset(token)
     return response
-
-
 _is_prod = os.getenv("APP_ENV", "development").strip().lower() == "production"
 _cors_env = os.getenv("CORS_ORIGINS", "") or os.getenv("CORS_ALLOWED_ORIGINS", "")
 cors_origins = [orig.strip() for orig in _cors_env.split(",") if orig.strip()]
+_cookie_cors_regex = None if _is_prod else r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.\d+\.\d+\.\d+)(:\d+)?$"
+from services.shared.auth_service import AUTH_COOKIE_NAME
+from services.shared.cookie_origin_protection import CookieOriginProtection
+app.add_middleware(CookieOriginProtection, cookie_names={AUTH_COOKIE_NAME}, allowed_origins=cors_origins, allowed_origin_regex=_cookie_cors_regex)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
-    allow_origin_regex=None if _is_prod else r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.\d+\.\d+\.\d+)(:\d+)?$",
+    allow_origin_regex=_cookie_cors_regex,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
     expose_headers=["X-Request-ID"],
 )
-
 if __name__ == "__main__":
     mcp.run(
         transport="streamable-http",
