@@ -433,6 +433,8 @@ jobs:
           MA_PORTAL_API_URL: ${{ secrets.MA_PORTAL_API_URL || 'http://host.docker.internal:8003' }}
           CEO_DATA_API_URL: ${{ secrets.CEO_DATA_API_URL || 'http://host.docker.internal:8005' }}
           FINANCE_PORTAL_API_URL: ${{ secrets.FINANCE_PORTAL_API_URL || 'http://host.docker.internal:8002' }}
+          SOCIAL_MEDIA_COMPLIANCE_BACKEND_URL: ${{ secrets.SOCIAL_MEDIA_COMPLIANCE_BACKEND_URL || 'http://host.docker.internal:8009' }}
+          REAL_ESTATE_BACKEND_URL: ${{ secrets.REAL_ESTATE_BACKEND_URL || 'http://host.docker.internal:8007' }}
           INTEGRATION_TIMEOUT_SECONDS: ${{ secrets.INTEGRATION_TIMEOUT_SECONDS || '5.0' }}
           AWS_S3_BUCKET_NAME: ${{ secrets.AWS_S3_BUCKET_NAME }}
           AWS_S3_REGION: ${{ secrets.AWS_S3_REGION || 'ca-central-1' }}
@@ -531,6 +533,8 @@ jobs:
             printf 'MA_PORTAL_API_URL=%s\n' "$MA_PORTAL_API_URL"
             printf 'CEO_DATA_API_URL=%s\n' "$CEO_DATA_API_URL"
             printf 'FINANCE_PORTAL_API_URL=%s\n' "$FINANCE_PORTAL_API_URL"
+            printf 'SOCIAL_MEDIA_COMPLIANCE_BACKEND_URL=%s\n' "$SOCIAL_MEDIA_COMPLIANCE_BACKEND_URL"
+            printf 'REAL_ESTATE_BACKEND_URL=%s\n' "$REAL_ESTATE_BACKEND_URL"
             printf 'INTEGRATION_TIMEOUT_SECONDS=%s\n' "$INTEGRATION_TIMEOUT_SECONDS"
             printf 'AWS_S3_BUCKET_NAME=%s\n' "$AWS_S3_BUCKET_NAME"
             printf 'AWS_S3_REGION=%s\n' "$AWS_S3_REGION"

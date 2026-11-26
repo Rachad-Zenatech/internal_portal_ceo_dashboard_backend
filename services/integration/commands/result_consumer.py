@@ -45,7 +45,11 @@ class ResultConsumer:
             "ceo.audit.events",
             self.handle_incoming_message,
         )
-        logger.info("Result & Event Consumer subscribed to administration, M&A, and cross-project audit queues.")
+        await rabbitmq_manager.consume_queue(
+            "ceo.real_estate.events",
+            self.handle_incoming_message,
+        )
+        logger.info("Result & Event Consumer subscribed to administration, M&A, Real Estate, and cross-project audit queues.")
 
     async def stop(self):
         self._running = False
@@ -75,10 +79,19 @@ class ResultConsumer:
             return True
         if not msg_type and message.get("eventType"):
             from services.integration.services.service_status_registry import normalize_service_name, service_status_registry
+            raw_service = str(message.get("service") or "administration")
+            event_name = str(message["eventType"])
+            affected_keys = list(message.get("affected_query_keys") or [])
+            if "real_estate" in raw_service.lower() or "real-estate" in raw_service.lower() or event_name.upper().startswith("REAL_ESTATE_"):
+                from services.integration.services.real_estate_integration_service import invalidate_real_estate_cache
+                invalidate_real_estate_cache(str(message.get("resourceId") or "") or None)
+                if "real-estate" not in affected_keys:
+                    affected_keys.append("real-estate")
             service_status_registry.publish_business_event({
-                "eventType": message["eventType"],
-                "service": normalize_service_name(message.get("service") or "administration"),
+                "eventType": event_name,
+                "service": normalize_service_name(raw_service),
                 "resourceId": message.get("resourceId"),
+                "affected_query_keys": affected_keys,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "data": message.get("data") or {},
             })

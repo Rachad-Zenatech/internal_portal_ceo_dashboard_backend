@@ -50,12 +50,12 @@ from tools.microsoft_graph.graph_router import router as graph_router
 from tools.integration.workflow_assignment_router import router as workflow_assignment_router
 from tools.integration.service_status_router import router as service_status_router
 from tools.integration.finance_integration_router import router as finance_integration_router
-
+from tools.integration.compliance_integration_router import router as compliance_integration_router
+from tools.integration.real_estate_integration_router import router as real_estate_integration_router
 # MCP tools
 from mcp_tools import register_all as register_mcp_tools, sync_mcp_tools_to_vector_db, ask_gemini_stream
 from services.ai import ai_observability, ai_usage_service
 from services.ai.ai_guardrails import screen_input
-
 
 # FastAPI, MCP tools, and the lightweight worker share one DB pool in this process.
 @asynccontextmanager
@@ -265,7 +265,6 @@ async def root():
 async def health_live():
     return {"status": "ok"}
 
-
 @app.get("/health/ready", include_in_schema=False)
 async def health_ready():
     try:
@@ -287,7 +286,6 @@ app.include_router(observability_router, prefix="/api", tags=["Observability"])
 app.include_router(notification_router, prefix="/api", tags=["Notifications"], dependencies=authenticated)
 app.include_router(notification_ws_router, tags=["Notifications"])
 app.include_router(board_router, prefix="/api/v1/ceo", tags=["Dashboard Customization"], dependencies=authenticated)
-
 # Mount Dashboard and CEO Integration APIs
 app.include_router(dashboard_router, prefix="/api/dashboard", tags=["CEO Dashboard Metrics"])
 app.include_router(dashboard_router, prefix="/accounting", tags=["Accounting Metrics"])
@@ -303,6 +301,8 @@ app.include_router(graph_router, prefix="/api/v1/ceo", tags=["Microsoft Graph"],
 app.include_router(service_status_router, tags=["Service Availability"])
 app.include_router(finance_integration_router, prefix="/api", tags=["Finance Integration"], dependencies=authenticated)
 app.include_router(finance_integration_router, prefix="/api/v1/ceo", tags=["Finance Integration"], dependencies=authenticated)
+app.include_router(compliance_integration_router, prefix="/api/v1/ceo", tags=["Social Media Compliance Integration"], dependencies=authenticated)
+app.include_router(real_estate_integration_router, prefix="/api/v1/ceo", tags=["Real Estate Integration"], dependencies=authenticated)
 app.add_middleware(
     SessionMiddleware,
     secret_key=require_secret("SESSION_SECRET"),

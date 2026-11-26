@@ -42,6 +42,11 @@ Each symbol shows its start line (`L<n>`); read from there to the next symbol's 
 - `MaDealUpdatePayload` (class) L716
 - `update_ma_deal_endpoint` (def) L720 [PUT /ma/deals/{deal_id}] - Dispatches a durable asynchronous command to update an M&A deal's properties.
 
+## tools/integration/compliance_integration_router.py (50 lines) - Social Media Compliance Integration Router for the CEO Dashboard.
+- `api_compliance_approved_content` (def) L18 [GET /compliance/approved-content] - Approved content/posts from Social Media Compliance, optionally filtered by brand.
+- `api_compliance_public_mood` (def) L28 [GET /compliance/public-mood] - Public Mood overview (Financial ZenaTech + Today's Posts) from Social Media Compliance.
+- `api_compliance_public_mood_scrape` (def) L37 [POST /compliance/public-mood/scrape] - Trigger a live Public Mood scrape on Social Media Compliance.
+
 ## tools/integration/finance_integration_router.py (122 lines) - Finance & Enterprise System Integration Router Provides endpoints to check connectivity, view circuit breaker state, query Finance data, ...
 - `get_finance_integration_status` (def) L26 [GET /integrations/finance/status] - Returns current circuit breaker state, failure stats, and tests connectivity to Finance backend.
 - `get_finance_companies_endpoint` (def) L48 [GET /integrations/finance/companies] - Queries companies from Finance backend with circuit breaker protection and last-known-good cache.
@@ -50,6 +55,14 @@ Each symbol shows its start line (`L<n>`); read from there to the next symbol's 
 - `get_finance_payable_contacts_endpoint` (def) L81 [GET /integrations/finance/payable-contacts] - Queries Accounts Payable customers/vendors from Finance with circuit breaker fallback.
 - `sync_coa_endpoint` (def) L92 [POST /integrations/finance/sync-coa] - Triggers import and synchronization of Chart of Accounts from Finance backend into Admin DB.
 - `sync_payable_contacts_endpoint` (def) L108 [POST /integrations/finance/sync-payable-contacts] - Triggers import and synchronization of Accounts Payable customers/vendors from Finance into Admin DB.
+
+## tools/integration/real_estate_integration_router.py (116 lines) - Real Estate Integration Router for the CEO Dashboard.
+- `api_real_estate_properties` (def) L20 [GET /real-estate/properties] - List Real Estate properties with resilient caching and circuit breaker status.
+- `api_real_estate_property_detail` (def) L38 [GET /real-estate/properties/{property_id}] - Return full property details, units, documents, and Floor Map AI models.
+- `api_real_estate_floor_map_project` (def) L47 [GET /real-estate/projects/{project_id}] - Return a specific Floor Map AI project (renders + 3D wall mesh).
+- `api_real_estate_render_image` (def) L56 [GET /real-estate/renders/{render_id}/image] - Proxy a 2D or 3D Floor Map render image.
+- `api_real_estate_floorplan_image` (def) L76 [GET /real-estate/projects/{project_id}/floorplan-image] - Proxy the original normalized floor plan image for 3D projection.
+- `api_real_estate_document_file` (def) L94 [GET /real-estate/properties/{property_id}/documents/{document_id}/file] - Proxy a property document for inline preview or download.
 
 ## tools/integration/service_status_router.py (196 lines) - Service Status Router & WebSocket Manager Provides: - GET /api/service-status: Initial snapshot of all services.
 - `WebSocketConnectionManager` (class) L26

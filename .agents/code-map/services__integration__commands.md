@@ -34,10 +34,10 @@ Each symbol shows its start line (`L<n>`); read from there to the next symbol's 
     - `_run_loop` (def) L49
     - `process_outbox_batch` (def) L82 - Fetches up to `limit` pending outbox entries and publishes them to RabbitMQ.
 
-## services/integration/commands/result_consumer.py (235 lines) - Result & Event Consumer Consumes authoritative command results and projection events from connected services, deduplicates via service_in...
+## services/integration/commands/result_consumer.py (248 lines) - Result & Event Consumer Consumes authoritative command results and projection events from connected services, deduplicates via service_in...
 - `ResultConsumer` (class) L25
     - `__init__` (def) L26
     - `start` (def) L29 - Starts subscribing to result and event queues.
-    - `stop` (def) L50
-    - `_handle_direct_event` (def) L54 - Handle audit logs, cross-app CEO events, and direct business events outside the command inbox.
-    - `handle_incoming_message` (def) L88 - Processes an incoming result or projection event message with inbox deduplication.
+    - `stop` (def) L54
+    - `_handle_direct_event` (def) L58 - Handle audit logs, cross-app CEO events, and direct business events outside the command inbox.
+    - `handle_incoming_message` (def) L101 - Processes an incoming result or projection event message with inbox deduplication.

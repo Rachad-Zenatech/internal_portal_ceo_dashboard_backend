@@ -143,44 +143,58 @@ def _resolve_ssl_mode() -> str | None:
     return "require"
 
 
+_pool_reset_lock: Optional[asyncio.Lock] = None
+
+
+def _get_reset_lock() -> asyncio.Lock:
+    global _pool_reset_lock
+    if _pool_reset_lock is None:
+        _pool_reset_lock = asyncio.Lock()
+    return _pool_reset_lock
+
+
+async def _build_primary_pool() -> PoolWrapper:
+    use_ssl = _resolve_ssl_mode()
+    min_size = int(os.getenv("DATABASE_POOL_MIN_SIZE") or os.getenv("DB_MIN_CONNECTIONS") or "2")
+    max_size = int(os.getenv("DATABASE_POOL_MAX_SIZE") or os.getenv("DB_MAX_CONNECTIONS") or "15")
+    retries = 5
+    for attempt in range(retries):
+        try:
+            raw_pool = await asyncpg.create_pool(
+                dsn=os.environ["DATABASE_URL"],
+                ssl=use_ssl,
+                min_size=min_size,
+                max_size=max_size,
+                timeout=15.0,
+                command_timeout=30.0,
+                max_inactive_connection_lifetime=60.0,
+                statement_cache_size=0,
+                server_settings={"application_name": "ceo_dashboard"},
+            )
+            return PoolWrapper(raw_pool)
+        except (ConnectionResetError, asyncpg.PostgresConnectionError, asyncpg.CannotConnectNowError, OSError, Exception) as e:
+            if attempt < retries - 1:
+                wait_time = 2 * (attempt + 1)
+                logger.warning(
+                    f"Database connection attempt {attempt + 1}/{retries} failed ({type(e).__name__}: {e}); retrying in {wait_time}s...",
+                    extra={"event": "database_pool_retry", "attempt": attempt + 1, "error": str(e)},
+                )
+                await asyncio.sleep(wait_time)
+            else:
+                logger.error(
+                    f"Failed to initialize database connection pool after {retries} attempts: {e}",
+                    extra={"event": "database_pool_init_failed"},
+                )
+                raise
+    raise RuntimeError("Failed to initialize database connection pool")
+
+
 async def create_pool():
     """Creates the connection pool if it doesn't exist yet, then returns it."""
     global _pool
     if _pool is None:
         logger.info("Initializing PostgreSQL connection pool", extra={"event": "database_pool_initializing"})
-        use_ssl = _resolve_ssl_mode()
-        min_size = int(os.getenv("DATABASE_POOL_MIN_SIZE") or os.getenv("DB_MIN_CONNECTIONS") or "2")
-        max_size = int(os.getenv("DATABASE_POOL_MAX_SIZE") or os.getenv("DB_MAX_CONNECTIONS") or "15")
-        retries = 5
-        for attempt in range(retries):
-            try:
-                raw_pool = await asyncpg.create_pool(
-                    dsn=os.environ["DATABASE_URL"],
-                    ssl=use_ssl,
-                    min_size=min_size,
-                    max_size=max_size,
-                    timeout=15.0,
-                    command_timeout=30.0,
-                    max_inactive_connection_lifetime=60.0,
-                    statement_cache_size=0,
-                    server_settings={"application_name": "ceo_dashboard"},
-                )
-                _pool = PoolWrapper(raw_pool)
-                break
-            except (ConnectionResetError, asyncpg.PostgresConnectionError, asyncpg.CannotConnectNowError, OSError, Exception) as e:
-                if attempt < retries - 1:
-                    wait_time = 2 * (attempt + 1)
-                    logger.warning(
-                        f"Database connection attempt {attempt + 1}/{retries} failed ({type(e).__name__}: {e}); retrying in {wait_time}s...",
-                        extra={"event": "database_pool_retry", "attempt": attempt + 1, "error": str(e)},
-                    )
-                    await asyncio.sleep(wait_time)
-                else:
-                    logger.error(
-                        f"Failed to initialize database connection pool after {retries} attempts: {e}",
-                        extra={"event": "database_pool_init_failed"},
-                    )
-                    raise
+        _pool = await _build_primary_pool()
     return _pool
 
 async def create_admin_pool():
@@ -248,12 +262,16 @@ async def close_admin_pool():
         _admin_pool = None
         logger.info("Closed Admin PostgreSQL connection pool", extra={"event": "admin_database_pool_closed"})
 
-async def reset_pool():
-    """Drop the current pool and create a fresh one after fatal connection failures."""
+async def reset_pool(failed_pool: Optional[PoolWrapper] = None):
+    """Atomically swap in a fresh pool after fatal connection failures without leaving `_pool` as None."""
     global _pool
-    old_pool = _pool
-    _pool = None
-    if old_pool:
+    async with _get_reset_lock():
+        if failed_pool is not None and _pool is not None and _pool is not failed_pool:
+            return _pool
+        new_pool = await _build_primary_pool()
+        old_pool = _pool
+        _pool = new_pool
+    if old_pool and old_pool is not new_pool:
         try:
             await asyncio.wait_for(old_pool.close(), timeout=2.0)
         except Exception:
@@ -261,7 +279,7 @@ async def reset_pool():
                 old_pool.terminate()
             except Exception:
                 pass
-    return await create_pool()
+    return new_pool
 
 
 def get_pool() -> asyncpg.Pool:
@@ -304,31 +322,56 @@ async def get_rls_conn(
             yield conn
 
 
+_TRANSIENT_CONN_ERRORS = (
+    asyncpg.PostgresConnectionError,
+    asyncpg.InterfaceError,
+    ConnectionResetError,
+    OSError,
+)
+
+
 @asynccontextmanager
 async def get_conn():
+    """Acquire one connection (recovering only before yield; never yields twice on caller errors)."""
+    pool = get_pool()
+    cm = _acquire_with_rls(pool)
+    try:
+        conn = await cm.__aenter__()
+    except _TRANSIENT_CONN_ERRORS as exc:
+        logger.warning(f"Database acquire error ({type(exc).__name__}: {exc}), resetting pool...")
+        new_pool = await reset_pool(failed_pool=pool)
+        cm = _acquire_with_rls(new_pool)
+        conn = await cm.__aenter__()
+
+    try:
+        yield conn
+    except BaseException as exc:
+        if not await cm.__aexit__(type(exc), exc, exc.__traceback__):
+            raise
+    else:
+        await cm.__aexit__(None, None, None)
+
+
+async def _run_with_retry(op):
     pool = get_pool()
     try:
-        async with _acquire_with_rls(pool) as conn:
-            yield conn
-    except (asyncpg.PostgresConnectionError, ConnectionResetError, asyncpg.CannotConnectNowError) as exc:
-        logger.warning(f"Database connection error ({type(exc).__name__}: {exc}), resetting pool...")
-        new_pool = await reset_pool()
-        async with _acquire_with_rls(new_pool) as conn:
-            yield conn
+        async with get_conn() as conn:
+            return await op(conn)
+    except _TRANSIENT_CONN_ERRORS as exc:
+        logger.warning(f"Database query connection error ({type(exc).__name__}: {exc}), resetting pool and retrying once...")
+        await reset_pool(failed_pool=pool)
+        async with get_conn() as conn:
+            return await op(conn)
 
 
 async def fetch_all(query: str, *args):
-    async with get_conn() as conn:
-        return await conn.fetch(query, *args)
+    return await _run_with_retry(lambda conn: conn.fetch(query, *args))
 
 async def fetch_one(query: str, *args):
-    async with get_conn() as conn:
-        return await conn.fetchrow(query, *args)
+    return await _run_with_retry(lambda conn: conn.fetchrow(query, *args))
 
 async def fetch_val(query: str, *args):
-    async with get_conn() as conn:
-        return await conn.fetchval(query, *args)
+    return await _run_with_retry(lambda conn: conn.fetchval(query, *args))
 
 async def execute(query: str, *args):
-    async with get_conn() as conn:
-        return await conn.execute(query, *args)
+    return await _run_with_retry(lambda conn: conn.execute(query, *args))

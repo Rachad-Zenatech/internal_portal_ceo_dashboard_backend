@@ -24,7 +24,7 @@ to find the right file.
 | .agents/code-map/services__dashboard.md | 1 | 1 KB |
 | .agents/code-map/services__integration__commands.md | 5 | 3 KB |
 | .agents/code-map/services__integration__connectors.md | 4 | 3 KB |
-| .agents/code-map/services__integration__services.md | 5 | 9 KB |
+| .agents/code-map/services__integration__services.md | 7 | 10 KB |
 | .agents/code-map/services__microsoft_graph.md | 1 | 1 KB |
 | .agents/code-map/services__notifications.md | 4 | 6 KB |
 | .agents/code-map/services__reports.md | 1 | 1 KB |
@@ -32,7 +32,7 @@ to find the right file.
 | .agents/code-map/services__uploads.md | 3 | 2 KB |
 | .agents/code-map/tools__customization.md | 1 | 1 KB |
 | .agents/code-map/tools__dashboard.md | 1 | 1 KB |
-| .agents/code-map/tools__integration.md | 5 | 8 KB |
+| .agents/code-map/tools__integration.md | 7 | 10 KB |
 | .agents/code-map/tools__microsoft_graph.md | 1 | 1 KB |
 | .agents/code-map/tools__notifications.md | 2 | 1 KB |
 | .agents/code-map/tools__shared.md | 4 | 2 KB |

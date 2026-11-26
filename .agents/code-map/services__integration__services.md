@@ -37,6 +37,15 @@ Each symbol shows its start line (`L<n>`); read from there to the next symbol's 
 - `get_ma_pipeline_summary` (def) L1227 - Aggregates executive metrics from the live M&A pipeline, or from the saved PostgreSQL copy when M&A cannot be
 - `get_ma_events` (def) L1313 - Transforms latest M&A pipeline activities and tasks into standard CEO event stream format.
 
+## services/integration/services/compliance_integration_service.py (210 lines) - Social Media Compliance Integration Service for the CEO Dashboard.
+- `generate_compliance_service_token` (def) L48 - Generate a scoped M2M JWT identifying the CEO Dashboard to Social Media Compliance.
+- `_execute_resilient_call` (def) L74
+- `get_compliance_approved_content` (def) L120 - Fetch approved content submissions and brands from Social Media Compliance.
+    - `_fetch` (def) L130
+- `get_compliance_public_mood` (def) L147 - Fetch Nav Public Mood data (Financial ZenaTech + Today's Posts) from Social Media Compliance.
+    - `_fetch` (def) L180
+- `trigger_compliance_public_mood_scrape` (def) L194 - Ask Social Media Compliance to start a fresh public mood scrape.
+
 ## services/integration/services/finance_integration_service.py (517 lines) - Finance & Enterprise System Integration Service Provides resilient machine-to-machine communication with the Finance Backend (enterprise_...
 - `CircuitState` (class) L38
 - `CircuitBreaker` (class) L47
@@ -95,6 +104,18 @@ Each symbol shows its start line (`L<n>`); read from there to the next symbol's 
     - `get_projection` (def) L18 - Retrieves a single projected entity with freshness metadata.
     - `list_projections` (def) L66 - Lists multiple projected entities of a given resource type with freshness metadata.
     - `upsert_projection` (def) L116 - Updates or creates a projected record in the database.
+
+## services/integration/services/real_estate_integration_service.py (228 lines) - Real Estate Integration Service for the CEO Dashboard.
+- `invalidate_real_estate_cache` (def) L50 - Clear cached Real Estate payloads after an upstream document, floor plan, or property change.
+- `generate_real_estate_service_token` (def) L60 - Generate a scoped M2M JWT identifying the CEO Dashboard to Real Estate.
+- `_execute_resilient_call` (def) L86
+- `get_real_estate_properties` (def) L132 - Fetch properties list from Real Estate.
+    - `_fetch` (def) L145
+- `get_real_estate_property_detail` (def) L164 - Fetch full property detail, units, documents, and floor plan models.
+    - `_fetch` (def) L178
+- `get_real_estate_floor_map_project` (def) L191 - Fetch a specific Floor Map AI project with all renders and 3D wall mesh data.
+    - `_fetch` (def) L198
+- `fetch_real_estate_binary` (def) L211 - Proxy binary images or property document files from Real Estate.
 
 ## services/integration/services/service_status_registry.py (448 lines) - Service Status Registry Maintains aggregated in-memory availability state across microservice instances.
 - `normalize_service_name` (def) L39

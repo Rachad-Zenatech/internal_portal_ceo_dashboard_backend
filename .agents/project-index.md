@@ -15,7 +15,7 @@ For function and route definitions with their line numbers, grep `.agents/code-m
 - models/customization/board_model.py (62 lines) - board model (customization)
 - models/notifications/notification_model.py (29 lines) - notification model (notifications)
 - models/shared/rbac_model.py (208 lines) - rbac model (shared)
-- postgresql_db/database.py (335 lines) - Optional dotenv import for loading .env and local overrides during development
+- postgresql_db/database.py (378 lines) - Optional dotenv import for loading .env and local overrides during development
 - postgresql_db/schemas/cross_service_schema.py (347 lines) - Cross-Service Persistence Schema Creates tables for: 1.
 - postgresql_db/schemas/notifications_schema.py (46 lines) - notifications schema (schemas)
 - postgresql_db/schemas/setup_ai_observability_schema.py (93 lines) - AI observability, caching and usage limits: trace spans for every AI step (model calls, embeddings, tool calls, guard checks, cache looku...
@@ -36,15 +36,17 @@ For function and route definitions with their line numbers, grep `.agents/code-m
 - services/integration/commands/command_service.py (366 lines) - Generic Command Service Validates, persists, and orchestrates asynchronous business commands across all connected services.
 - services/integration/commands/ma_command_processor.py (181 lines) - M&A Command Processor Consumes and executes commands from the 'ma.commands' queue, invokes authoritative deal/pipeline domain logic, and ...
 - services/integration/commands/outbox_publisher.py (192 lines) - Transactional Outbox Publisher Background worker that polls pending outbox entries, publishes them to RabbitMQ with publisher confirmatio...
-- services/integration/commands/result_consumer.py (235 lines) - Result & Event Consumer Consumes authoritative command results and projection events from connected services, deduplicates via service_in...
+- services/integration/commands/result_consumer.py (248 lines) - Result & Event Consumer Consumes authoritative command results and projection events from connected services, deduplicates via service_in...
 - services/integration/connectors/admin_connector.py (225 lines) - Administration Service Connector Handles Administration Portal domain commands, results, and local projection synchronization.
 - services/integration/connectors/base_connector.py (131 lines) - Base Service Connector Defines the abstract interface and standard envelopes for service connectors in the CEO Dashboard.
 - services/integration/connectors/connector_registry.py (36 lines) - Connector Registry Maintains typed registrations for all service connectors in the CEO Dashboard ecosystem.
 - services/integration/connectors/ma_connector.py (186 lines) - M&A Service Connector Handles Mergers & Acquisitions domain commands, results, and local projection synchronization.
 - services/integration/services/admin_integration_service.py (1344 lines) - admin integration service (integration services)
+- services/integration/services/compliance_integration_service.py (210 lines) - Social Media Compliance Integration Service for the CEO Dashboard.
 - services/integration/services/finance_integration_service.py (517 lines) - Finance & Enterprise System Integration Service Provides resilient machine-to-machine communication with the Finance Backend (enterprise_...
 - services/integration/services/integration_resilience.py (233 lines) - Integration Resilience Layer Provides Circuit Breakers, Hard Timeout Handling, In-Memory Last-Known-Good Caching, and Standardized State ...
 - services/integration/services/projection_service.py (155 lines) - Projection Service Serves local filtered read-models with freshness metadata, decoupling UI reads from remote service availability.
+- services/integration/services/real_estate_integration_service.py (228 lines) - Real Estate Integration Service for the CEO Dashboard.
 - services/integration/services/service_status_registry.py (448 lines) - Service Status Registry Maintains aggregated in-memory availability state across microservice instances.
 - services/microsoft_graph/graph_service.py (155 lines) - graph service (microsoft graph)
 - services/notifications/embedded_broker.py (99 lines) - Embedded MQTT Broker Helper Automatically starts an in-process MQTT broker on 0.0.0.0:1883 during FastAPI startup if no external broker i...
@@ -66,7 +68,9 @@ For function and route definitions with their line numbers, grep `.agents/code-m
 - tools/dashboard/dashboard.py (55 lines) - dashboard (dashboard)
 - tools/integration/approver_roles_router.py (344 lines) - Approver Roles Router Manages HIGH_LEVEL_APPROVER and LOW_LEVEL_APPROVER role membership for the CEO Dashboard, forwarding changes to the...
 - tools/integration/ceo_integration_router.py (747 lines) - ceo integration router (integration)
+- tools/integration/compliance_integration_router.py (50 lines) - Social Media Compliance Integration Router for the CEO Dashboard.
 - tools/integration/finance_integration_router.py (122 lines) - Finance & Enterprise System Integration Router Provides endpoints to check connectivity, view circuit breaker state, query Finance data, ...
+- tools/integration/real_estate_integration_router.py (116 lines) - Real Estate Integration Router for the CEO Dashboard.
 - tools/integration/service_status_router.py (196 lines) - Service Status Router & WebSocket Manager Provides: - GET /api/service-status: Initial snapshot of all services.
 - tools/integration/workflow_assignment_router.py (637 lines) - workflow assignment router (integration)
 - tools/microsoft_graph/graph_router.py (77 lines) - Graph User Search Router Exposes a search endpoint that proxies Microsoft Graph and Administration Portal directory search.

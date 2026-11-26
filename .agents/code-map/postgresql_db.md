@@ -4,7 +4,7 @@
 
 Each symbol shows its start line (`L<n>`); read from there to the next symbol's line, not the whole file.
 
-## postgresql_db/database.py (335 lines) - Optional dotenv import for loading .env and local overrides during development
+## postgresql_db/database.py (378 lines) - Optional dotenv import for loading .env and local overrides during development
 - `_resolve_rls_identity` (def) L18 - Resolve verified user identity and super-admin status from explicit parameters or auth ContextVars.
 - `set_rls_context` (def) L41 - Supply the verified user identity to PostgreSQL Row-Level Security (RLS) using bound parameters.
 - `_RLSPoolAcquireContext` (class) L62 - Wraps asyncpg PoolAcquireContext to propagate verified RLS context on connection checkout.
@@ -20,20 +20,23 @@ Each symbol shows its start line (`L<n>`); read from there to the next symbol's 
     - `terminate` (def) L122
     - `__getattr__` (def) L125
 - `_resolve_ssl_mode` (def) L134
-- `create_pool` (def) L146 - Creates the connection pool if it doesn't exist yet, then returns it.
-- `create_admin_pool` (def) L186 - Creates the Admin database connection pool.
-- `close_pool` (def) L225
-- `close_admin_pool` (def) L238
-- `reset_pool` (def) L251 - Drop the current pool and create a fresh one after fatal connection failures.
-- `get_pool` (def) L267
-- `get_admin_pool` (def) L272
-- `_acquire_with_rls` (def) L282
-- `get_rls_conn` (def) L294 - Acquire a pooled connection, start a transaction, and bind `app.user_id` locally to that transaction.
-- `get_conn` (def) L308
-- `fetch_all` (def) L320
-- `fetch_one` (def) L324
-- `fetch_val` (def) L328
-- `execute` (def) L332
+- `_get_reset_lock` (def) L149
+- `_build_primary_pool` (def) L156
+- `create_pool` (def) L192 - Creates the connection pool if it doesn't exist yet, then returns it.
+- `create_admin_pool` (def) L200 - Creates the Admin database connection pool.
+- `close_pool` (def) L239
+- `close_admin_pool` (def) L252
+- `reset_pool` (def) L265 - Atomically swap in a fresh pool after fatal connection failures without leaving `_pool` as None.
+- `get_pool` (def) L285
+- `get_admin_pool` (def) L290
+- `_acquire_with_rls` (def) L300
+- `get_rls_conn` (def) L312 - Acquire a pooled connection, start a transaction, and bind `app.user_id` locally to that transaction.
+- `get_conn` (def) L334 - Acquire one connection (recovering only before yield; never yields twice on caller errors).
+- `_run_with_retry` (def) L355
+- `fetch_all` (def) L367
+- `fetch_one` (def) L370
+- `fetch_val` (def) L373
+- `execute` (def) L376
 
 ## postgresql_db/setup_rls_security.py (309 lines) - RDS PostgreSQL Role-Based Access Control & Row-Level Security (RLS) Setup for the CEO Dashboard backend.
 - `ensure_rls_security` (def) L281 - Apply RDS PostgreSQL permission roles and Row-Level Security (RLS) policies idempotently.

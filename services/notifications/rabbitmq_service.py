@@ -200,7 +200,7 @@ _HUB_SERVICES = [
 ]
 
 # Services whose command/DLQ/event queues this server declares (queue arguments must match peers').
-_TOPOLOGY_SERVICES = ("travel", "marketing", "administration", "ma", "ceo")
+_TOPOLOGY_SERVICES = ("travel", "marketing", "administration", "ma", "real_estate", "ceo")
 
 
 def _build_hub_application(app_id: str, name: str, user: str, prefix: str, default_port: str) -> Dict[str, Any]:
