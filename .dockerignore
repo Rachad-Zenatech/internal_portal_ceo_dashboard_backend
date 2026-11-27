@@ -52,3 +52,7 @@ requirements-dev.txt
 package-lock.json
 run_server.sh
 run_server_dev.sh
+
+# Local AI tooling and security reports are not runtime assets
+.codex
+security-assessment*
