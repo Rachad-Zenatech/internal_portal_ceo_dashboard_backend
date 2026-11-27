@@ -8,6 +8,17 @@ pipelines:
           caches:
             - pip
           script:
+            - |
+              if [ -n "$GIT_CRYPT_KEY" ]; then
+                echo "Unlocking git-crypt encrypted files..."
+                apt-get update && apt-get install -y git-crypt
+                echo "$GIT_CRYPT_KEY" | base64 -d > /tmp/git-crypt-key
+                git-crypt unlock /tmp/git-crypt-key
+                rm -f /tmp/git-crypt-key
+                echo "Files unlocked successfully."
+              else
+                echo "GIT_CRYPT_KEY variable not set, skipping git-crypt unlock."
+              fi
             - python -m pip install --upgrade pip
             - pip install -r requirements.txt
             - pip install pytest ruff

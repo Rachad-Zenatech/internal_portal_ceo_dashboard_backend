@@ -238,3 +238,4 @@ models/*.candidate.json
 models/*.candidate.xgb
 
 # Docker local overrides
+!.env.production
