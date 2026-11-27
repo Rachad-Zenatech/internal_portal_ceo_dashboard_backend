@@ -95,7 +95,7 @@ pipelines:
                       line = line[7:].strip()
                   k, v = line.split("=", 1)
                   k, v = k.strip(), v.strip()
-                  if k == "EC2_SSH_KEY" and "-----END" not in v and (not v.strip(""'") or "-----BEGIN" in v):
+                  if k == "EC2_SSH_KEY" and "-----END" not in v and (v.strip() in ("", '"', "'") or "-----BEGIN" in v):
                       kl = [v.lstrip("\"'")]
                       while i < len(raw_lines):
                           nxt = raw_lines[i]
