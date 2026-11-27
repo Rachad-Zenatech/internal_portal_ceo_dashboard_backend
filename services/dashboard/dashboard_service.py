@@ -4,6 +4,14 @@ import os
 import time
 import logging
 from postgresql_db.database import get_pool
+from services.dashboard.finance_dashboard_client import (
+    fetch_finance_account_distribution,
+    fetch_finance_bank_balances,
+    fetch_finance_overview,
+    fetch_finance_recent_transactions,
+    fetch_finance_revenue_expense,
+    fetch_finance_summary,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -135,11 +143,18 @@ def _distribution_from_account_totals(rows):
 
 
 async def get_summary_metrics(company_id: int | None = None, start_date: str | None = None, end_date: str | None = None):
+    remote = await fetch_finance_summary(company_id, start_date, end_date)
+    if remote is not None:
+        return remote
     rows = await _get_account_type_totals(company_id, start_date, end_date)
     return _summary_from_account_totals(rows)
 
 
 async def get_revenue_vs_expenses(period: str = "monthly", company_id: int | None = None, start_date: str | None = None, end_date: str | None = None, _connection=None):
+    if _connection is None:
+        remote = await fetch_finance_revenue_expense(period, company_id, start_date, end_date)
+        if remote is not None:
+            return remote
     async with _dashboard_connection(_connection) as conn:
         try:
             has_gl = await conn.fetchval("""
@@ -204,6 +219,10 @@ async def get_revenue_vs_expenses(period: str = "monthly", company_id: int | Non
 
 
 async def get_bank_account_balances(company_id: int | None = None, start_date: str | None = None, end_date: str | None = None, _connection=None):
+    if _connection is None:
+        remote = await fetch_finance_bank_balances(company_id, start_date, end_date)
+        if remote is not None:
+            return remote
     async with _dashboard_connection(_connection) as conn:
         try:
             has_bank = await conn.fetchval("""
@@ -262,11 +281,17 @@ async def get_bank_account_balances(company_id: int | None = None, start_date: s
 
 
 async def get_account_type_distribution(company_id: int | None = None, start_date: str | None = None, end_date: str | None = None):
+    remote = await fetch_finance_account_distribution(company_id, start_date, end_date)
+    if remote is not None:
+        return remote
     rows = await _get_account_type_totals(company_id, start_date, end_date)
     return _distribution_from_account_totals(rows)
 
 
 async def get_recent_transactions(company_id: int | None = None, start_date: str | None = None, end_date: str | None = None):
+    remote = await fetch_finance_recent_transactions(company_id, start_date, end_date)
+    if remote is not None:
+        return remote
     async with _dashboard_connection() as conn:
         try:
             has_journal = await conn.fetchval("""
@@ -309,6 +334,9 @@ async def get_dashboard_overview(
     start_date: str | None = None,
     end_date: str | None = None,
 ):
+    remote = await fetch_finance_overview(period, company_id, start_date, end_date)
+    if remote is not None:
+        return remote
     summary = await get_summary_metrics(company_id, start_date, end_date)
     rev_exp = await get_revenue_vs_expenses(period, company_id, start_date, end_date)
     bank = await get_bank_account_balances(company_id, start_date, end_date)
@@ -317,7 +345,11 @@ async def get_dashboard_overview(
     return {
         "summary": summary,
         "revenue_expense": rev_exp,
+        "revenueExpense": rev_exp,
         "bank_balances": bank,
+        "bankBalances": bank,
         "account_distribution": dist,
+        "accountDistribution": dist,
         "recent_transactions": recent,
+        "recentTransactions": recent,
     }

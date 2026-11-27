@@ -4,15 +4,29 @@
 
 Each symbol shows its start line (`L<n>`); read from there to the next symbol's line, not the whole file.
 
-## services/dashboard/dashboard_service.py (323 lines) - dashboard service (dashboard)
-- `_overview_cache_seconds` (def) L14
-- `_dashboard_connection` (def) L23
-- `_get_account_type_totals` (def) L32
-- `_summary_from_account_totals` (def) L74
-- `_distribution_from_account_totals` (def) L104
-- `get_summary_metrics` (def) L137
-- `get_revenue_vs_expenses` (def) L142
-- `get_bank_account_balances` (def) L206
-- `get_account_type_distribution` (def) L264
-- `get_recent_transactions` (def) L269
-- `get_dashboard_overview` (def) L306
+## services/dashboard/dashboard_service.py (355 lines) - dashboard service (dashboard)
+- `_overview_cache_seconds` (def) L22
+- `_dashboard_connection` (def) L31
+- `_get_account_type_totals` (def) L40
+- `_summary_from_account_totals` (def) L82
+- `_distribution_from_account_totals` (def) L112
+- `get_summary_metrics` (def) L145
+- `get_revenue_vs_expenses` (def) L153
+- `get_bank_account_balances` (def) L221
+- `get_account_type_distribution` (def) L283
+- `get_recent_transactions` (def) L291
+- `get_dashboard_overview` (def) L331
+
+## services/dashboard/finance_dashboard_client.py (225 lines) - Finance Dashboard Proxy Client.
+- `_finance_api_base` (def) L33
+- `_cache_ttl_seconds` (def) L41
+- `_build_params` (def) L49
+- `_clean_revenue_expense` (def) L68
+- `_normalize_overview` (def) L85
+- `_fetch_finance_json` (def) L115
+- `fetch_finance_overview` (def) L153
+- `fetch_finance_summary` (def) L166
+- `fetch_finance_revenue_expense` (def) L178
+- `fetch_finance_bank_balances` (def) L191
+- `fetch_finance_account_distribution` (def) L203
+- `fetch_finance_recent_transactions` (def) L215

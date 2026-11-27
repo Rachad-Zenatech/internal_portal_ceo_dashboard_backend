@@ -31,7 +31,8 @@ For function and route definitions with their line numbers, grep `.agents/code-m
 - services/ai/ai_usage_service.py (141 lines) - AI Usage Limits Caps how often Gemini runs, so one person (or a stuck loop) can't use up the provider quota or run up cost.
 - services/ai/bedrock_service.py (466 lines) - AWS Bedrock AI Service Adapter.
 - services/customization/board_service.py (53 lines) - board service (customization)
-- services/dashboard/dashboard_service.py (323 lines) - dashboard service (dashboard)
+- services/dashboard/dashboard_service.py (355 lines) - dashboard service (dashboard)
+- services/dashboard/finance_dashboard_client.py (225 lines) - Finance Dashboard Proxy Client.
 - services/integration/commands/admin_command_processor.py (341 lines) - Administration Command Processor Consumes and executes commands from the 'administration.commands' queue, invokes authoritative domain lo...
 - services/integration/commands/command_service.py (366 lines) - Generic Command Service Validates, persists, and orchestrates asynchronous business commands across all connected services.
 - services/integration/commands/ma_command_processor.py (181 lines) - M&A Command Processor Consumes and executes commands from the 'ma.commands' queue, invokes authoritative deal/pipeline domain logic, and ...
