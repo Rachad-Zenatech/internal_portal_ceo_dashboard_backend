@@ -4,41 +4,143 @@ pipelines:
   branches:
     main:
       - step:
-          name: Lint & Test Backend
+          name: Lint & Test
           caches:
             - pip
           script:
-            - |
-              if [ -n "$GIT_CRYPT_KEY" ]; then
-                echo "Unlocking git-crypt encrypted files..."
-                apt-get update && apt-get install -y git-crypt
-                echo "$GIT_CRYPT_KEY" | base64 -d > /tmp/git-crypt-key
-                git-crypt unlock /tmp/git-crypt-key
-                rm -f /tmp/git-crypt-key
-                echo "Files unlocked successfully."
-              else
-                echo "GIT_CRYPT_KEY variable not set, skipping git-crypt unlock."
-              fi
             - python -m pip install --upgrade pip
-            - pip install -r requirements.txt
-            - pip install pytest ruff
-            - python -m py_compile server.py || true
-            - ruff check . --select E9,F63,F7,F82 || true
-            - pytest tests/ || true
+            - pip install -r requirements.txt pytest ruff
+            - python -m compileall -q .
+            - ruff check . --select E9,F63,F7,F82
+            - |
+              APP_ENV=development \
+              SESSION_SECRET=ci-dummy-session-secret-for-import-check-32chars \
+              JWT_SECRET=ci-dummy-jwt-secret-for-import-check-32chars \
+              DATABASE_URL=postgresql://postgres:postgres@localhost:5432/ci_check \
+              python -c "import server"
+            - |
+              if [ -d "tests" ]; then
+                pytest tests/ || true
+              fi
+
+      - step:
+          name: Build & Verify Docker
+          image: atlassian/default-image:4
+          services:
+            - docker
+          caches:
+            - docker
+          script:
+            - docker build -t app-verifier:latest .
+
       - step:
           name: Deploy to EC2
           trigger: manual
           deployment: production
           script:
-            - echo "Deploying to EC2..."
-            - pipe: atlassian/ssh-run:0.4.1
-              variables:
-                SSH_USER: $EC2_USER
-                SERVER: $EC2_HOST
-                SSH_KEY: $EC2_SSH_KEY
-                COMMAND: |
-                  set -e
-                  cd ~/app || true
-                  git pull origin main || true
-                  docker compose down || true
-                  docker compose up -d --build || true
+            - |
+              set -euo pipefail
+              RUNNER_IP=""
+              AWS_SG_AUTHORIZED=0
+              AWS_REGION_VAL="${AWS_REGION:-${AWS_S3_REGION:-ca-central-1}}"
+              AWS_KEY="${AWS_ACCESS_KEY:-${AWS_ACCESS_KEY_ID:-${ACCESS_KEY:-}}}"
+              AWS_SECRET="${AWS_SECRET_ACCESS_KEY:-${SECRET_ACCESS_KEY:-}}"
+              SG_ID="${AWS_SECURITY_GROUP_ID:-}"
+
+              cleanup() {
+                rm -f ec2-key.pem /tmp/git-crypt-key
+                if [ "$AWS_SG_AUTHORIZED" -eq 1 ] && [ -n "$RUNNER_IP" ] && [ -n "$SG_ID" ]; then
+                  aws ec2 revoke-security-group-ingress \
+                    --region "$AWS_REGION_VAL" \
+                    --group-id "$SG_ID" \
+                    --protocol tcp --port 22 --cidr "${RUNNER_IP}/32" || true
+                fi
+              }
+              trap cleanup EXIT
+
+              apt-get update && apt-get install -y --no-install-recommends git-crypt openssh-client curl
+              if [ -n "${GIT_CRYPT_KEY:-}" ]; then
+                echo "$GIT_CRYPT_KEY" | base64 -d > /tmp/git-crypt-key
+                git-crypt unlock /tmp/git-crypt-key
+                rm -f /tmp/git-crypt-key
+              elif [ -f .env.production ] && head -c 9 .env.production | grep -q "GITCRYPT"; then
+                echo "ERROR: .env.production is encrypted and GIT_CRYPT_KEY is not set."
+                exit 1
+              fi
+
+              if [ ! -f .env.production ]; then
+                echo "ERROR: .env.production not found."
+                exit 1
+              fi
+
+              # Load .env.production without clobbering explicitly configured pipeline variables.
+              SAVED_EC2_HOST="${EC2_HOST:-}"
+              SAVED_EC2_USER="${EC2_USER:-}"
+              SAVED_EC2_SSH_KEY="${EC2_SSH_KEY:-}"
+              SAVED_AWS_KEY="$AWS_KEY"
+              SAVED_AWS_SECRET="$AWS_SECRET"
+              SAVED_SG_ID="$SG_ID"
+              set -a
+              . ./.env.production
+              set +a
+              [ -n "$SAVED_EC2_HOST" ] && EC2_HOST="$SAVED_EC2_HOST"
+              [ -n "$SAVED_EC2_USER" ] && EC2_USER="$SAVED_EC2_USER"
+              [ -n "$SAVED_EC2_SSH_KEY" ] && EC2_SSH_KEY="$SAVED_EC2_SSH_KEY"
+              [ -n "$SAVED_AWS_KEY" ] && AWS_KEY="$SAVED_AWS_KEY" || AWS_KEY="${AWS_ACCESS_KEY_ID:-${AWS_ACCESS_KEY:-}}"
+              [ -n "$SAVED_AWS_SECRET" ] && AWS_SECRET="$SAVED_AWS_SECRET" || AWS_SECRET="${AWS_SECRET_ACCESS_KEY:-}"
+              [ -n "$SAVED_SG_ID" ] && SG_ID="$SAVED_SG_ID" || SG_ID="${AWS_SECURITY_GROUP_ID:-}"
+              EC2_USER="${EC2_USER:-ec2-user}"
+              AWS_REGION_VAL="${AWS_REGION:-${AWS_S3_REGION:-ca-central-1}}"
+
+              if [ -z "${EC2_HOST:-}" ] || [ -z "${EC2_SSH_KEY:-}" ]; then
+                echo "ERROR: EC2_HOST or EC2_SSH_KEY is missing."
+                exit 1
+              fi
+
+              if [ -n "$AWS_KEY" ] && [ -n "$AWS_SECRET" ] && [ -n "$SG_ID" ]; then
+                pip install --no-cache-dir awscli
+                export AWS_ACCESS_KEY_ID="$AWS_KEY"
+                export AWS_SECRET_ACCESS_KEY="$AWS_SECRET"
+                RUNNER_IP="$(curl -fsS https://api.ipify.org)"
+                aws ec2 authorize-security-group-ingress \
+                  --region "$AWS_REGION_VAL" \
+                  --group-id "$SG_ID" \
+                  --protocol tcp --port 22 --cidr "${RUNNER_IP}/32" || true
+                AWS_SG_AUTHORIZED=1
+              fi
+
+              install -m 600 /dev/null ec2-key.pem
+              printf '%s\n' "$EC2_SSH_KEY" > ec2-key.pem
+
+              ssh -o StrictHostKeyChecking=no -i ec2-key.pem "$EC2_USER@$EC2_HOST" "
+                set -e
+                mkdir -p ~/internal_portal_ceo_dashboard_backend
+                cd ~/internal_portal_ceo_dashboard_backend
+                if [ -d .git ]; then
+                  git fetch origin main
+                  git reset --hard origin/main
+                else
+                  git clone https://bitbucket.org/epazztech/at-ca-ceo-backend.git .
+                fi
+                echo \"Deploying commit: \$(git rev-parse --short HEAD)\"
+              "
+
+              scp -o StrictHostKeyChecking=no -i ec2-key.pem .env.production "$EC2_USER@$EC2_HOST":~/internal_portal_ceo_dashboard_backend/.env
+
+              ssh -o StrictHostKeyChecking=no -i ec2-key.pem "$EC2_USER@$EC2_HOST" '
+                set -e
+                cd ~/internal_portal_ceo_dashboard_backend
+                chmod 600 .env
+                if sudo docker compose version >/dev/null 2>&1; then
+                  COMPOSE="sudo docker compose"
+                elif sudo /usr/local/bin/docker-compose version >/dev/null 2>&1; then
+                  COMPOSE="sudo /usr/local/bin/docker-compose"
+                else
+                  sudo mkdir -p /usr/local/lib/docker/cli-plugins
+                  sudo curl -fsSL "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/lib/docker/cli-plugins/docker-compose
+                  sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+                  COMPOSE="sudo docker compose"
+                fi
+                $COMPOSE -f docker-compose.prod.yml up -d --build --remove-orphans
+                sudo docker image prune -f
+              '
