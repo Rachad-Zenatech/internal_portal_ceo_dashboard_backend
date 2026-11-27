@@ -75,11 +75,12 @@ def _get_ai_health():
 
 
 def _get_ai_usage_service():
-    try:
-        from services.ai.observability import ai_usage_service
-        return ai_usage_service
-    except Exception:
-        return None
+    for mod in ("services.ai.observability.ai_usage_service", "services.ai.ai_usage_service"):
+        try:
+            return __import__(mod, fromlist=["*"])
+        except Exception:
+            continue
+    return None
 
 
 async def _fetch_usage_aggregates(hours: int) -> Dict[str, Any]:
@@ -279,6 +280,48 @@ def _build_overview_features(
     return features
 
 
+def _build_health_and_totals(
+    cores: List[Dict[str, Any]],
+    features: List[Dict[str, Any]],
+    health_dict: Dict[str, Any],
+) -> tuple[Dict[str, Any], Dict[str, Any]]:
+    has_core_out = any(c["status"] == "OUT" for c in cores)
+    degraded_features = [
+        {
+            "feature": f["feature"],
+            "label": f["label"],
+            "status": f["status"],
+            "reason": f["issue_reason"] or f["status"],
+            "message": f["issue_message"] or f"{f['primary_core_label']} is {f['status']}",
+            "since": f["issue_since"],
+            "affected_features": [f["label"]],
+        }
+        for f in features
+        if f["status"] in {"OUT", "OVERFLOW"}
+    ]
+    health_payload = {
+        "available": bool(health_dict.get("available", True)) and not has_core_out,
+        "reason": health_dict.get("reason") or ("UNCONFIGURED" if has_core_out else None),
+        "title": health_dict.get("title") or ("Primary AI unavailable" if has_core_out else None),
+        "message": health_dict.get("message") or next((c["detail"] for c in cores if c["status"] == "OUT"), None),
+        "since": health_dict.get("since"),
+        "degraded_features": degraded_features,
+    }
+    totals_payload = {
+        "calls": sum(f["calls"] for f in features),
+        "errors": sum(f["errors"] for f in features),
+        "blocked": sum(f["blocked"] for f in features),
+        "cache_hits": sum(f["cache_hits"] for f in features),
+        "input_tokens": sum(f["input_tokens"] for f in features),
+        "output_tokens": sum(f["output_tokens"] for f in features),
+        "features_total": len(features),
+        "features_out": sum(1 for f in features if f["status"] == "OUT"),
+        "features_overflow": sum(1 for f in features if f["status"] == "OVERFLOW"),
+        "features_healthy": sum(1 for f in features if f["healthy"]),
+    }
+    return health_payload, totals_payload
+
+
 async def get_ai_overview(hours: int = 24, user_id: Optional[UUID] = None) -> Dict[str, Any]:
     usage = await _fetch_usage_aggregates(hours)
     ai_health = _get_ai_health()
@@ -303,38 +346,36 @@ async def get_ai_overview(hours: int = 24, user_id: Optional[UUID] = None) -> Di
     cores = _build_overview_cores(health_dict, model_rows, step_rows, _features_by_core())
     core_status_map = {c["core"]: c["status"] for c in cores}
     features = _build_overview_features(model_rows, usage["feature_last"], feature_issues, core_status_map, quota_by_feature)
-
-    total_calls = sum(f["calls"] for f in features)
-    total_errors = sum(f["errors"] for f in features)
-    total_blocked = sum(f["blocked"] for f in features)
-    total_cache = sum(f["cache_hits"] for f in features)
-    total_in = sum(f["input_tokens"] for f in features)
-    total_out = sum(f["output_tokens"] for f in features)
+    health_payload, totals_payload = _build_health_and_totals(cores, features, health_dict)
 
     return {
+        "hours": hours,
         "window_hours": hours,
         "generated_at": datetime.now(timezone.utc).isoformat(),
+        "health": health_payload,
+        "totals": totals_payload,
         "summary": {
             "overall_status": "OUT" if any(c["status"] == "OUT" for c in cores) else ("OVERFLOW" if any(c["status"] == "OVERFLOW" for c in cores) else "OK"),
             "cores_total": len(cores),
             "cores_healthy": sum(1 for c in cores if c["status"] in {"OK", "READY"}),
             "cores_out": sum(1 for c in cores if c["status"] == "OUT"),
             "cores_overflow": sum(1 for c in cores if c["status"] == "OVERFLOW"),
-            "features_total": len(features),
-            "features_healthy": sum(1 for f in features if f["healthy"]),
-            "features_out": sum(1 for f in features if f["status"] == "OUT"),
-            "features_overflow": sum(1 for f in features if f["status"] == "OVERFLOW"),
-            "total_calls": total_calls,
-            "total_errors": total_errors,
-            "total_blocked": total_blocked,
-            "total_cache_hits": total_cache,
-            "total_input_tokens": total_in,
-            "total_output_tokens": total_out,
-            "total_tokens": total_in + total_out,
+            "features_total": totals_payload["features_total"],
+            "features_healthy": totals_payload["features_healthy"],
+            "features_out": totals_payload["features_out"],
+            "features_overflow": totals_payload["features_overflow"],
+            "total_calls": totals_payload["calls"],
+            "total_errors": totals_payload["errors"],
+            "total_blocked": totals_payload["blocked"],
+            "total_cache_hits": totals_payload["cache_hits"],
+            "total_input_tokens": totals_payload["input_tokens"],
+            "total_output_tokens": totals_payload["output_tokens"],
+            "total_tokens": totals_payload["input_tokens"] + totals_payload["output_tokens"],
         },
         "cores": cores,
         "features": features,
         "models": model_rows,
         "steps": step_rows,
+        "guard": usage["guards"],
         "guards": usage["guards"],
     }

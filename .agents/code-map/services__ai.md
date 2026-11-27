@@ -49,17 +49,18 @@ Each symbol shows its start line (`L<n>`); read from there to the next symbol's 
 - `_notify_attempt` (def) L389
 - `list_ai_errors` (def) L399 - Recent AI errors and blocked calls within `hours`, optionally filtered by feature and/or model.
 
-## services/ai/ai_overview_service.py (341 lines) - Combined AI health, feature-to-core mapping, and usage overview for System & Security.
+## services/ai/ai_overview_service.py (382 lines) - Combined AI health, feature-to-core mapping, and usage overview for System & Security.
 - `_has_core` (def) L38
 - `_routing_tier` (def) L42
 - `_features_by_core` (def) L52
 - `_get_bedrock_service` (def) L60
 - `_get_ai_health` (def) L69
 - `_get_ai_usage_service` (def) L77
-- `_fetch_usage_aggregates` (def) L85
-- `_build_overview_cores` (def) L162
-- `_build_overview_features` (def) L221
-- `get_ai_overview` (def) L282
+- `_fetch_usage_aggregates` (def) L86
+- `_build_overview_cores` (def) L163
+- `_build_overview_features` (def) L222
+- `_build_health_and_totals` (def) L283
+- `get_ai_overview` (def) L325
 
 ## services/ai/ai_types.py (92 lines) - Native AI request/content DTOs replacing google.genai.types for AWS Bedrock.
 - `Blob` (class) L7

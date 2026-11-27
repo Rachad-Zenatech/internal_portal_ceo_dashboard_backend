@@ -26,7 +26,7 @@ For function and route definitions with their line numbers, grep `.agents/code-m
 - server.py (601 lines) - server.py - CEO Executive Dashboard Backend Server
 - services/ai/ai_guardrails.py (249 lines) - AI guardrails: screening what goes into the model and redacting personal data from what comes out.
 - services/ai/ai_observability.py (424 lines) - AI observability: a trace span for every model call, embedding, retrieval, cache lookup, guard check and tool call, plus a prompt log of ...
-- services/ai/ai_overview_service.py (341 lines) - Combined AI health, feature-to-core mapping, and usage overview for System & Security.
+- services/ai/ai_overview_service.py (382 lines) - Combined AI health, feature-to-core mapping, and usage overview for System & Security.
 - services/ai/ai_types.py (92 lines) - Native AI request/content DTOs replacing google.genai.types for AWS Bedrock.
 - services/ai/ai_usage_service.py (141 lines) - AI Usage Limits Caps how often Gemini runs, so one person (or a stuck loop) can't use up the provider quota or run up cost.
 - services/ai/bedrock_service.py (466 lines) - AWS Bedrock AI Service Adapter.
