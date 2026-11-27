@@ -80,9 +80,36 @@ pipelines:
               SAVED_AWS_KEY="$AWS_KEY"
               SAVED_AWS_SECRET="$AWS_SECRET"
               SAVED_SG_ID="$SG_ID"
-              set -a
-              . ./.env.production
-              set +a
+              sed -i 's/\r$//' .env.production
+              eval "$(python3 - <<'PY'
+              import re, shlex
+              from pathlib import Path
+              raw_lines = Path(".env.production").read_text(encoding="utf-8-sig", errors="replace").splitlines()
+              i = 0
+              while i < len(raw_lines):
+                  line = raw_lines[i].strip()
+                  i += 1
+                  if not line or line.startswith("#") or "=" not in line:
+                      continue
+                  if line.startswith("export "):
+                      line = line[7:].strip()
+                  k, v = line.split("=", 1)
+                  k, v = k.strip(), v.strip()
+                  if k == "EC2_SSH_KEY" and "-----BEGIN" in v and "-----END" not in v:
+                      kl = [v.lstrip("\"'")]
+                      while i < len(raw_lines):
+                          nxt = raw_lines[i]
+                          i += 1
+                          kl.append(nxt.rstrip("\"'"))
+                          if "-----END" in nxt:
+                              break
+                      v = "\n".join(kl)
+                  elif len(v) >= 2 and v[0] == v[-1] and v[0] in ('"', "'"):
+                      v = v[1:-1]
+                  if re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", k):
+                      print(f"export {k}={shlex.quote(v)}")
+              PY
+              )"
               [ -n "$SAVED_EC2_HOST" ] && EC2_HOST="$SAVED_EC2_HOST"
               [ -n "$SAVED_EC2_USER" ] && EC2_USER="$SAVED_EC2_USER"
               [ -n "$SAVED_EC2_SSH_KEY" ] && EC2_SSH_KEY="$SAVED_EC2_SSH_KEY"
@@ -110,7 +137,7 @@ pipelines:
               fi
 
               install -m 600 /dev/null ec2-key.pem
-              printf '%s\n' "$EC2_SSH_KEY" > ec2-key.pem
+              printf '%s\n' "$EC2_SSH_KEY" | tr -d '\r' > ec2-key.pem
 
               ssh -o StrictHostKeyChecking=no -i ec2-key.pem "$EC2_USER@$EC2_HOST" "
                 set -e
