@@ -48,7 +48,7 @@ pipelines:
               SG_ID="${AWS_SECURITY_GROUP_ID:-}"
 
               cleanup() {
-                rm -f ec2-key.pem /tmp/git-crypt-key
+                rm -f ec2-key.pem /tmp/git-crypt-key /tmp/repo.bundle
                 if [ "$AWS_SG_AUTHORIZED" -eq 1 ] && [ -n "$RUNNER_IP" ] && [ -n "$SG_ID" ]; then
                   aws ec2 revoke-security-group-ingress \
                     --region "$AWS_REGION_VAL" \
@@ -160,16 +160,19 @@ pipelines:
               print(v)
               PY
 
+              git bundle create /tmp/repo.bundle HEAD
+              scp -o StrictHostKeyChecking=no -i ec2-key.pem /tmp/repo.bundle "$EC2_USER@$EC2_HOST":/tmp/repo.bundle
               ssh -o StrictHostKeyChecking=no -i ec2-key.pem "$EC2_USER@$EC2_HOST" "
                 set -e
                 mkdir -p ~/internal_portal_ceo_dashboard_backend
                 cd ~/internal_portal_ceo_dashboard_backend
                 if [ -d .git ]; then
-                  git fetch origin main
-                  git reset --hard origin/main
+                  git fetch /tmp/repo.bundle HEAD
+                  git reset --hard FETCH_HEAD
                 else
-                  git clone https://bitbucket.org/epazztech/at-ca-ceo-backend.git .
+                  git clone /tmp/repo.bundle .
                 fi
+                rm -f /tmp/repo.bundle
                 echo \"Deploying commit: \$(git rev-parse --short HEAD)\"
               "
 
