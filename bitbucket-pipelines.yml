@@ -124,20 +124,41 @@ pipelines:
                 exit 1
               fi
 
-              if [ -n "$AWS_KEY" ] && [ -n "$AWS_SECRET" ] && [ -n "$SG_ID" ]; then
+              if [ -n "$AWS_KEY" ] && [ -n "$AWS_SECRET" ]; then
                 pip install --no-cache-dir awscli
                 export AWS_ACCESS_KEY_ID="$AWS_KEY"
                 export AWS_SECRET_ACCESS_KEY="$AWS_SECRET"
-                RUNNER_IP="$(curl -fsS https://api.ipify.org)"
-                aws ec2 authorize-security-group-ingress \
-                  --region "$AWS_REGION_VAL" \
-                  --group-id "$SG_ID" \
-                  --protocol tcp --port 22 --cidr "${RUNNER_IP}/32" || true
-                AWS_SG_AUTHORIZED=1
+                if [ -z "$SG_ID" ]; then
+                  SG_ID="$(aws ec2 describe-instances --region "$AWS_REGION_VAL" --filters "Name=dns-name,Values=$EC2_HOST" --query "Reservations[0].Instances[0].SecurityGroups[0].GroupId" --output text 2>/dev/null || true)"
+                  if [ -z "$SG_ID" ] || [ "$SG_ID" = "None" ]; then
+                    SG_ID="$(aws ec2 describe-instances --region "$AWS_REGION_VAL" --filters "Name=ip-address,Values=$EC2_HOST" --query "Reservations[0].Instances[0].SecurityGroups[0].GroupId" --output text 2>/dev/null || true)"
+                  fi
+                  [ "$SG_ID" = "None" ] && SG_ID=""
+                fi
+                if [ -n "$SG_ID" ]; then
+                  RUNNER_IP="$(curl -fsS https://api.ipify.org)"
+                  aws ec2 authorize-security-group-ingress \
+                    --region "$AWS_REGION_VAL" \
+                    --group-id "$SG_ID" \
+                    --protocol tcp --port 22 --cidr "${RUNNER_IP}/32" || true
+                  AWS_SG_AUTHORIZED=1
+                else
+                  echo "WARNING: Could not determine AWS_SECURITY_GROUP_ID for $EC2_HOST; skipping SG SSH authorization."
+                fi
               fi
 
+              export EC2_SSH_KEY
               install -m 600 /dev/null ec2-key.pem
-              printf '%s\n' "$EC2_SSH_KEY" | tr -d '\r' > ec2-key.pem
+              python3 - <<'PY' > ec2-key.pem
+              import os, re
+              v = os.environ.get("EC2_SSH_KEY", "").replace("\r", "").replace("\\n", "\n").strip().strip("\"'")
+              m = re.match(r"^(-----BEGIN [^-]+-----)\s*(.*?)\s*(-----END [^-]+-----)$", v, re.DOTALL)
+              if m and "\n" not in m.group(2).strip():
+                  body = re.sub(r"\s+", "", m.group(2))
+                  wrapped = "\n".join(body[j:j+64] for j in range(0, len(body), 64))
+                  v = f"{m.group(1)}\n{wrapped}\n{m.group(3)}"
+              print(v)
+              PY
 
               ssh -o StrictHostKeyChecking=no -i ec2-key.pem "$EC2_USER@$EC2_HOST" "
                 set -e
