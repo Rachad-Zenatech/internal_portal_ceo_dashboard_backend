@@ -4,34 +4,43 @@
 
 Each symbol shows its start line (`L<n>`); read from there to the next symbol's line, not the whole file.
 
-## services/uploads/s3_storage_service.py (148 lines) - s3 storage service (uploads)
-- `_bucket_name` (def) L11
-- `_aws_region` (def) L18
-- `_is_enabled` (def) L22
-- `_request_security_args` (def) L28
-- `_upload_security_args` (def) L33
-- `get_s3_client` (def) L56 - Initializes and returns a boto3 S3 client using environment or IAM role credentials.
-- `upload_file_to_s3` (def) L68 - Uploads file bytes to S3.
-- `download_file_from_s3` (def) L93 - Downloads file content from S3 as bytes.
-- `generate_presigned_url` (def) L110 - Generates a secure temporary pre-signed URL to view/download a file from S3.
-- `delete_file_from_s3` (def) L131 - Deletes a file object from S3.
+## services/uploads/s3_storage_service.py (199 lines) - s3 storage service (uploads)
+- `is_s3_configured` (def) L11 - Return True when an S3 bucket name is configured via environment variables.
+- `get_configured_bucket_name` (def) L16
+- `_bucket_name` (def) L21
+- `_aws_region` (def) L28
+- `_is_enabled` (def) L32
+- `_request_security_args` (def) L38
+- `_upload_security_args` (def) L43
+- `get_s3_client` (def) L66 - Initializes and returns a boto3 S3 client using environment or IAM role credentials.
+- `upload_file_to_s3` (def) L78 - Uploads file bytes to S3.
+- `download_file_from_s3` (def) L103 - Downloads file content from S3 as bytes.
+- `generate_presigned_url` (def) L120 - Generates a secure temporary pre-signed URL to view/download a file from S3.
+- `list_files_in_s3` (def) L141 - List objects stored under prefix in the configured S3 bucket.
+- `delete_file_from_s3` (def) L182 - Deletes a file object from S3.
 
-## services/uploads/upload_archive_service.py (224 lines) - upload archive service (uploads)
-- `_gzip_level` (def) L28
-- `_base_dir` (def) L36
-- `_index_path` (def) L50
-- `_safe_filename` (def) L54
-- `_validate_upload_type` (def) L62
-- `_load_index` (def) L69
-- `_write_index` (def) L79
-- `_resolve_stored_path` (def) L87
-- `_s3_key` (def) L95
-- `archive_upload_bytes` (def) L107
-- `public_upload_item` (def) L166
-- `list_uploads` (def) L170
-- `get_upload` (def) L182
-- `read_upload` (def) L189
-- `delete_upload` (def) L201
+## services/uploads/upload_archive_service.py (338 lines) - upload archive service (uploads)
+- `_gzip_level` (def) L37
+- `_base_dir` (def) L45
+- `_index_path` (def) L58
+- `_safe_filename` (def) L62
+- `_validate_upload_type` (def) L70
+- `_load_index` (def) L77
+- `_write_index` (def) L88
+- `_resolve_stored_path` (def) L96
+- `_s3_prefix` (def) L104
+- `_s3_key` (def) L108
+- `_store_local_gzip` (def) L119
+- `get_storage_status` (def) L129 - Return active storage backend details for UI diagnostics.
+- `_s3_obj_to_item` (def) L139
+- `_sync_s3_into_index` (def) L179 - Merge S3 objects into the local index so files survive container restarts.
+- `archive_upload_bytes` (def) L217
+- `public_upload_item` (def) L271
+- `list_uploads_with_status` (def) L275
+- `list_uploads` (def) L287
+- `get_upload` (def) L292
+- `read_upload` (def) L303
+- `delete_upload` (def) L315
 
 ## services/uploads/upload_security_service.py (55 lines) - upload security service (uploads)
 - `max_upload_bytes` (def) L14

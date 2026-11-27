@@ -61,8 +61,8 @@ For function and route definitions with their line numbers, grep `.agents/code-m
 - services/shared/rbac_service.py (540 lines) - Utility for audit logging
 - services/shared/secret_config.py (18 lines) - Validated secret lookup from environment variables with no hardcoded fallbacks.
 - services/shared/service_security_policy.py (201 lines) - Enterprise Application Security & Scope Authorization Policy Defines the strict Application-to-Application Access Matrix (Machine-to-Mach...
-- services/uploads/s3_storage_service.py (148 lines) - s3 storage service (uploads)
-- services/uploads/upload_archive_service.py (224 lines) - upload archive service (uploads)
+- services/uploads/s3_storage_service.py (199 lines) - s3 storage service (uploads)
+- services/uploads/upload_archive_service.py (338 lines) - upload archive service (uploads)
 - services/uploads/upload_security_service.py (55 lines) - upload security service (uploads)
 - tools/customization/board_router.py (38 lines) - board router (customization)
 - tools/dashboard/dashboard.py (55 lines) - dashboard (dashboard)
@@ -80,4 +80,4 @@ For function and route definitions with their line numbers, grep `.agents/code-m
 - tools/shared/observability.py (90 lines) - observability (shared)
 - tools/shared/rbac_router.py (53 lines) - rbac router (shared)
 - tools/shared/search.py (28 lines) - Add any future global search logic here (e.g., searching users or roles)
-- tools/uploads/upload_files.py (87 lines) - upload files (uploads)
+- tools/uploads/upload_files.py (140 lines) - upload files (uploads)

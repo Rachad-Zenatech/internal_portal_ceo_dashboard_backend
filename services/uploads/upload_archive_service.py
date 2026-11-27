@@ -1,5 +1,7 @@
 import gzip
+import hashlib
 import json
+import logging
 import mimetypes
 import os
 import re
@@ -12,16 +14,23 @@ from typing import Any, Optional
 from services.uploads.s3_storage_service import (
     delete_file_from_s3,
     download_file_from_s3,
+    get_configured_bucket_name,
+    is_s3_configured,
+    list_files_in_s3,
     upload_file_to_s3,
 )
 
+logger = logging.getLogger(__name__)
 
 UPLOAD_TYPES = {
     "general-ledger": "General Ledger",
     "bank-statement": "Bank Statement",
+    "financial-report": "Financial Report",
+    "executive-document": "Executive Document",
     "bank-statement-preview": "Bank Statement Preview",
 }
-S3_UPLOAD_TYPES = frozenset({"general-ledger", "bank-statement"})
+S3_UPLOAD_TYPES = frozenset({"general-ledger", "bank-statement", "financial-report", "executive-document"})
+_S3_NAME_RE = re.compile(r"^(?P<ts>\d{8}T\d{6}Z)_(?P<fid>[0-9a-f]{32})_(?P<name>.+)$")
 _index_lock = threading.Lock()
 
 
@@ -37,7 +46,6 @@ def _base_dir() -> Path:
     path = Path(os.getenv("UPLOAD_FILES_DIR", "data/upload_files")).resolve()
     try:
         path.mkdir(parents=True, exist_ok=True)
-        # Test writability
         test_file = path / ".write_test"
         test_file.touch()
         test_file.unlink()
@@ -71,8 +79,9 @@ def _load_index() -> list[dict[str, Any]]:
     if not path.exists():
         return []
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return raw if isinstance(raw, list) else []
+    except (json.JSONDecodeError, OSError):
         return []
 
 
@@ -92,16 +101,117 @@ def _resolve_stored_path(relative_path: str) -> Path:
     return resolved
 
 
+def _s3_prefix() -> str:
+    return os.getenv("UPLOAD_S3_PREFIX", "data").strip("/")
+
+
 def _s3_key(upload_type: str, stored_at: datetime, file_id: str, filename: str) -> str:
-    prefix = os.getenv("UPLOAD_S3_PREFIX", "data").strip("/")
     parts = [
-        prefix,
+        _s3_prefix(),
         upload_type,
         stored_at.strftime("%Y"),
         stored_at.strftime("%m"),
         f"{stored_at.strftime('%Y%m%dT%H%M%SZ')}_{file_id}_{filename}",
     ]
     return "/".join(part for part in parts if part)
+
+
+def _store_local_gzip(upload_type: str, stored_at: datetime, file_id: str, safe_name: str, content: bytes) -> tuple[str, int]:
+    folder = _base_dir() / upload_type / stored_at.strftime("%Y") / stored_at.strftime("%m")
+    folder.mkdir(parents=True, exist_ok=True)
+    stored_name = f"{stored_at.strftime('%Y%m%dT%H%M%SZ')}_{file_id}_{safe_name}.gz"
+    local_path = folder / stored_name
+    with gzip.open(local_path, "wb", compresslevel=_gzip_level()) as gz:
+        gz.write(content)
+    return local_path.relative_to(_base_dir()).as_posix(), local_path.stat().st_size
+
+
+def get_storage_status() -> dict[str, Any]:
+    """Return active storage backend details for UI diagnostics."""
+    s3_ready = is_s3_configured()
+    return {
+        "mode": "s3" if s3_ready else "local",
+        "s3_configured": s3_ready,
+        "bucket": get_configured_bucket_name(),
+    }
+
+
+def _s3_obj_to_item(obj: dict[str, Any]) -> dict[str, Any]:
+    key = str(obj.get("key") or "")
+    prefix = _s3_prefix()
+    rel = key[len(prefix) + 1 :] if prefix and key.startswith(f"{prefix}/") else key
+    parts = [p for p in rel.split("/") if p]
+    leaf = parts[-1] if parts else "upload.bin"
+
+    inferred_type = parts[0] if parts and parts[0] in UPLOAD_TYPES else "executive-document"
+    match = _S3_NAME_RE.match(leaf)
+    if match:
+        file_id = match.group("fid")
+        filename = match.group("name")
+    else:
+        file_id = hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]
+        filename = leaf
+
+    last_mod = obj.get("last_modified")
+    stored_at = (
+        last_mod.astimezone(timezone.utc).isoformat()
+        if isinstance(last_mod, datetime)
+        else datetime.now(timezone.utc).isoformat()
+    )
+    size = int(obj.get("size") or 0)
+    content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    return {
+        "id": file_id,
+        "upload_type": inferred_type,
+        "upload_type_label": UPLOAD_TYPES.get(inferred_type, inferred_type.replace("-", " ").title()),
+        "filename": filename,
+        "content_type": content_type,
+        "original_size": size,
+        "compressed_size": size,
+        "compression_percent": 0,
+        "stored_at": stored_at,
+        "storage": "s3",
+        "path": key,
+        "metadata": {"source": "s3-discovered"},
+    }
+
+
+def _sync_s3_into_index() -> tuple[list[dict[str, Any]], Optional[str]]:
+    """Merge S3 objects into the local index so files survive container restarts."""
+    with _index_lock:
+        items = _load_index()
+        if not is_s3_configured():
+            return items, None
+        try:
+            s3_objects = list_files_in_s3(_s3_prefix())
+        except Exception as exc:
+            logger.warning("Could not sync S3 uploads index: %s", exc)
+            return items, f"S3 bucket sync unavailable ({exc}). Showing local index."
+
+        by_path = {item.get("path"): item for item in items if item.get("storage") == "s3" and item.get("path")}
+        s3_keys = set()
+        changed = False
+        for obj in s3_objects:
+            key = obj.get("key")
+            if not key:
+                continue
+            s3_keys.add(key)
+            if key not in by_path:
+                items.append(_s3_obj_to_item(obj))
+                changed = True
+
+        # Drop stale s3 entries that were deleted externally from the bucket
+        filtered = [item for item in items if item.get("storage") != "s3" or item.get("path") in s3_keys]
+        if len(filtered) != len(items):
+            items = filtered
+            changed = True
+
+        if changed:
+            try:
+                _write_index(items)
+            except OSError as exc:
+                logger.warning("Could not persist synced upload index: %s", exc)
+        return items, None
 
 
 def archive_upload_bytes(
@@ -119,23 +229,22 @@ def archive_upload_bytes(
     original_size = len(content)
     detected_type = content_type or mimetypes.guess_type(safe_name)[0] or "application/octet-stream"
 
-    if upload_type in S3_UPLOAD_TYPES:
-        stored_path = _s3_key(upload_type, stored_at, file_id, safe_name)
-        upload_file_to_s3(content, stored_path, detected_type)
-        storage = "s3"
-        stored_size = original_size
+    storage = "server-gzip"
+    stored_path = ""
+    stored_size = original_size
+
+    if upload_type in S3_UPLOAD_TYPES and is_s3_configured():
+        try:
+            stored_path = _s3_key(upload_type, stored_at, file_id, safe_name)
+            upload_file_to_s3(content, stored_path, detected_type)
+            storage = "s3"
+            stored_size = original_size
+        except Exception as exc:
+            logger.warning("S3 upload failed for %s (%s); falling back to local gzip storage.", safe_name, exc)
+            stored_path, stored_size = _store_local_gzip(upload_type, stored_at, file_id, safe_name, content)
+            storage = "server-gzip"
     else:
-        folder = _base_dir() / upload_type / stored_at.strftime("%Y") / stored_at.strftime("%m")
-        folder.mkdir(parents=True, exist_ok=True)
-        stored_name = f"{stored_at.strftime('%Y%m%dT%H%M%SZ')}_{file_id}_{safe_name}.gz"
-        local_path = folder / stored_name
-
-        with gzip.open(local_path, "wb", compresslevel=_gzip_level()) as gz:
-            gz.write(content)
-
-        stored_path = local_path.relative_to(_base_dir()).as_posix()
-        storage = "server-gzip"
-        stored_size = local_path.stat().st_size
+        stored_path, stored_size = _store_local_gzip(upload_type, stored_at, file_id, safe_name, content)
 
     item = {
         "id": file_id,
@@ -145,11 +254,7 @@ def archive_upload_bytes(
         "content_type": detected_type,
         "original_size": original_size,
         "compressed_size": stored_size,
-        "compression_percent": (
-            round((1 - (stored_size / original_size)) * 100, 1)
-            if original_size
-            else 0
-        ),
+        "compression_percent": round((1 - (stored_size / original_size)) * 100, 1) if original_size else 0,
         "stored_at": stored_at.isoformat(),
         "storage": storage,
         "path": stored_path,
@@ -167,20 +272,29 @@ def public_upload_item(item: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in item.items() if key != "path"}
 
 
-def list_uploads(upload_type: Optional[str] = None) -> list[dict[str, Any]]:
+def list_uploads_with_status(upload_type: Optional[str] = None) -> tuple[list[dict[str, Any]], Optional[str]]:
     if upload_type:
         _validate_upload_type(upload_type)
 
-    items = _load_index()
+    items, warning = _sync_s3_into_index()
     if upload_type:
         items = [item for item in items if item.get("upload_type") == upload_type]
 
     items.sort(key=lambda item: item.get("stored_at", ""), reverse=True)
-    return [public_upload_item(item) for item in items]
+    return [public_upload_item(item) for item in items], warning
+
+
+def list_uploads(upload_type: Optional[str] = None) -> list[dict[str, Any]]:
+    items, _ = list_uploads_with_status(upload_type)
+    return items
 
 
 def get_upload(file_id: str) -> dict[str, Any]:
     for item in _load_index():
+        if item.get("id") == file_id:
+            return item
+    items, _ = _sync_s3_into_index()
+    for item in items:
         if item.get("id") == file_id:
             return item
     raise FileNotFoundError("Upload not found")

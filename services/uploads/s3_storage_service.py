@@ -8,8 +8,18 @@ from botocore.exceptions import BotoCoreError, ClientError
 logger = logging.getLogger(__name__)
 
 
+def is_s3_configured() -> bool:
+    """Return True when an S3 bucket name is configured via environment variables."""
+    return bool((os.getenv("AWS_S3_BUCKET_NAME") or os.getenv("S3_BUCKET_NAME") or "").strip())
+
+
+def get_configured_bucket_name() -> Optional[str]:
+    bucket = (os.getenv("AWS_S3_BUCKET_NAME") or os.getenv("S3_BUCKET_NAME") or "").strip()
+    return bucket or None
+
+
 def _bucket_name() -> str:
-    bucket = os.getenv("AWS_S3_BUCKET_NAME") or os.getenv("S3_BUCKET_NAME")
+    bucket = get_configured_bucket_name()
     if not bucket:
         raise ValueError("AWS_S3_BUCKET_NAME environment variable is not configured.")
     return bucket
@@ -127,6 +137,47 @@ def generate_presigned_url(s3_key: str, expiration: int = 3600) -> str:
     except (BotoCoreError, ClientError) as exc:
         logger.error("Failed to generate presigned URL for %s: %s", s3_key, exc)
         raise RuntimeError(f"S3 presigned URL error: {exc}") from exc
+
+def list_files_in_s3(prefix: str = "", max_keys: int = 1000) -> list[dict[str, Any]]:
+    """List objects stored under prefix in the configured S3 bucket."""
+    bucket = _bucket_name()
+    s3_client = get_s3_client()
+    results: list[dict[str, Any]] = []
+    continuation_token: Optional[str] = None
+    clean_prefix = prefix.strip("/")
+    prefix_arg = f"{clean_prefix}/" if clean_prefix else ""
+
+    try:
+        while len(results) < max_keys:
+            kwargs: dict[str, Any] = {
+                "Bucket": bucket,
+                "MaxKeys": min(1000, max_keys - len(results)),
+                **_request_security_args(),
+            }
+            if prefix_arg:
+                kwargs["Prefix"] = prefix_arg
+            if continuation_token:
+                kwargs["ContinuationToken"] = continuation_token
+            response = s3_client.list_objects_v2(**kwargs)
+            for obj in response.get("Contents") or []:
+                key = obj.get("Key") or ""
+                if not key or key.endswith("/"):
+                    continue
+                results.append(
+                    {
+                        "key": key,
+                        "size": int(obj.get("Size") or 0),
+                        "last_modified": obj.get("LastModified"),
+                    }
+                )
+            if not response.get("IsTruncated"):
+                break
+            continuation_token = response.get("NextContinuationToken")
+        return results
+    except (BotoCoreError, ClientError) as exc:
+        logger.warning("Failed to list objects in S3 bucket %s: %s", bucket, exc)
+        raise RuntimeError(f"S3 list error: {exc}") from exc
+
 
 def delete_file_from_s3(s3_key: str) -> bool:
     """

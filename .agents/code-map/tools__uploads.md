@@ -4,9 +4,10 @@
 
 Each symbol shows its start line (`L<n>`); read from there to the next symbol's line, not the whole file.
 
-## tools/uploads/upload_files.py (87 lines) - upload files (uploads)
-- `list_uploaded_files` (def) L20 [GET ]
-- `_content_disposition` (def) L40
-- `view_uploaded_file` (def) L46 [GET /{file_id}/view]
-- `download_uploaded_file` (def) L64 [GET /{file_id}/download]
-- `delete_uploaded_file` (def) L82 [DELETE /{file_id}]
+## tools/uploads/upload_files.py (140 lines) - upload files (uploads)
+- `_content_disposition` (def) L27
+- `list_uploaded_files` (def) L33 [GET ]
+- `upload_archive_files` (def) L55 [POST ]
+- `view_uploaded_file` (def) L94 [GET /{file_id}/view]
+- `download_uploaded_file` (def) L113 [GET /{file_id}/download]
+- `delete_uploaded_file` (def) L132 [DELETE /{file_id}]
